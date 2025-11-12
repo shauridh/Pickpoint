@@ -241,6 +241,51 @@ class MockApiService {
         return pkg;
     }
 
+    async sendWaNotification(pkg: Package) {
+        const waSettings = getFromStorage('waSettings', {
+            apiUrl: 'https://zapin.my.id/send-message',
+            apiKey: '',
+            senderNumber: '',
+            messageTemplate: 'HI {namaPenerima}, paket Anda dengan AWB {awb} sudah dapat diambil di pickpoint {lokasi}. Buka link berikut untuk mendapatkan QR Code pengambilan: {qrLink}'
+        });
+    
+        if (!waSettings.apiUrl || !waSettings.apiKey || !waSettings.senderNumber) {
+            console.log("Konfigurasi WhatsApp Gateway belum lengkap. Notifikasi tidak dikirim.");
+            return;
+        }
+    
+        const recipient = this.recipients.find(r => r.id === pkg.recipient_id);
+        const expedition = this.expeditions.find(e => e.id === pkg.expedition_id);
+        const location = this.locations.find(l => l.id === pkg.location_id);
+    
+        if (!recipient) {
+            console.log(`Penerima dengan ID ${pkg.recipient_id} tidak ditemukan. Notifikasi WA dibatalkan.`);
+            return;
+        }
+
+        const qrLink = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(pkg.awb)}`;
+    
+        let message = waSettings.messageTemplate;
+        message = message.replace('{namaPenerima}', recipient.name)
+                         .replace('{awb}', pkg.awb)
+                         .replace('{ekspedisi}', expedition?.name || 'Pengirim')
+                         .replace('{lokasi}', location?.name || 'lokasi Anda')
+                         .replace('{qrLink}', qrLink);
+    
+        const payload = {
+            api_key: waSettings.apiKey,
+            sender: waSettings.senderNumber,
+            number: recipient.whatsapp,
+            message: message,
+        };
+    
+        console.log('--- SIMULASI PANGGILAN API WHATSAPP ---');
+        console.log(`Endpoint: POST ${waSettings.apiUrl}`);
+        console.log('Request Body:', JSON.stringify(payload, null, 2));
+        console.log('------------------------------------');
+        // In a real app, you would fetch() here.
+    }
+
     async addPackage(newPackageData: Omit<Package, 'id' | 'created_at' | 'status' | 'photo_url' | 'price'>) {
         await this.delay(700);
         if (this.packages.some(p => p.awb.toLowerCase() === newPackageData.awb.toLowerCase())) {
@@ -257,6 +302,9 @@ class MockApiService {
         };
         this.packages.push(newPackage);
         saveToStorage('packages', this.packages);
+        
+        await this.sendWaNotification(newPackage);
+
         return newPackage;
     }
 

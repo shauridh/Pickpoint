@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { DollarSign, Package, PackageCheck, PlusCircle, ArrowRightCircle, Inbox } from 'lucide-react';
+import { DollarSign, Package, PackageCheck, PlusCircle, QrCode, Inbox } from 'lucide-react';
 import { api } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { UserRole, Package as PackageType, PackageStatus, Recipient, Expedition, Location } from '../types';
 import AddPackageModal from '../components/modals/AddPackageModal';
 import PackageDetailModal from '../components/modals/PackageDetailModal';
+import ScanAndPickupModal from '../components/modals/ScanAndPickupModal';
 import { calculatePrice } from '../utils/priceCalculator';
 
 interface KpiData {
@@ -55,6 +56,7 @@ const DashboardPage: React.FC = () => {
     
     const [isAddModalOpen, setAddModalOpen] = useState(false);
     const [isDetailModalOpen, setDetailModalOpen] = useState(false);
+    const [isScanModalOpen, setScanModalOpen] = useState(false);
     const [selectedPackage, setSelectedPackage] = useState<PackageType | null>(null);
 
     const fetchData = useCallback(async () => {
@@ -181,6 +183,13 @@ const DashboardPage: React.FC = () => {
                             <option value={PackageStatus.PICKED_UP}>{PackageStatus.PICKED_UP}</option>
                         </select>
                         <button
+                           onClick={() => setScanModalOpen(true)}
+                           className="flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-indigo-600 border border-transparent rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 w-full md:w-auto"
+                       >
+                           <QrCode className="w-5 h-5 mr-2" />
+                           Scan Paket
+                       </button>
+                        <button
                             onClick={() => setAddModalOpen(true)}
                             className="flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md shadow-sm hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 w-full md:w-auto"
                         >
@@ -242,7 +251,8 @@ const DashboardPage: React.FC = () => {
                 </div>
             </div>
             {isAddModalOpen && <AddPackageModal isOpen={isAddModalOpen} onClose={() => setAddModalOpen(false)} onSuccess={fetchData} />}
-            {isDetailModalOpen && selectedPackage && <PackageDetailModal pkg={selectedPackage} isOpen={isDetailModalOpen} onClose={() => setDetailModalOpen(false)} />}
+            {isDetailModalOpen && selectedPackage && <PackageDetailModal pkg={selectedPackage} isOpen={isDetailModalOpen} onClose={() => setDetailModalOpen(false)} onSuccess={fetchData} />}
+            {isScanModalOpen && <ScanAndPickupModal isOpen={isScanModalOpen} onClose={() => setScanModalOpen(false)} onSuccess={fetchData} />}
         </div>
     );
 };

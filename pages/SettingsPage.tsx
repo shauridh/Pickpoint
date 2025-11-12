@@ -4,6 +4,21 @@ import { api } from '../services/api';
 import { User, Recipient, Location as LocationType, UserRole, PricingScheme, PickupMode } from '../types';
 import { PlusCircle, Edit2, Trash2 } from 'lucide-react';
 
+interface WaSettings {
+    apiUrl: string;
+    apiKey: string;
+    senderNumber: string;
+    messageTemplate: string;
+}
+
+const defaultWaSettings: WaSettings = {
+    apiUrl: 'https://zapin.my.id/send-message',
+    apiKey: '',
+    senderNumber: '',
+    messageTemplate: 'HI {namaPenerima}, paket Anda dengan AWB {awb} sudah dapat diambil di pickpoint {lokasi}. Buka link berikut untuk mendapatkan QR Code pengambilan: {qrLink}'
+};
+
+
 const SettingsPage = () => {
     const { user } = useAuth();
     const [activeTab, setActiveTab] = useState('recipients');
@@ -33,6 +48,8 @@ const SettingsPage = () => {
     const [recipientForm, setRecipientForm] = useState({ name: '', towerUnit: '', whatsapp: '' });
     const [locationForm, setLocationForm] = useState<Omit<LocationType, 'id'>>(defaultLocationForm);
     const [userForm, setUserForm] = useState(defaultUserForm);
+    const [waSettings, setWaSettings] = useState<WaSettings>(defaultWaSettings);
+
 
     // State for editing items
     const [editingRecipient, setEditingRecipient] = useState<Recipient | null>(null);
@@ -62,6 +79,10 @@ const SettingsPage = () => {
 
     useEffect(() => {
         fetchData();
+        const storedWaSettings = localStorage.getItem('waSettings');
+        if (storedWaSettings) {
+            setWaSettings(JSON.parse(storedWaSettings));
+        }
     }, [fetchData]);
 
     // --- Form Change Handlers ---
@@ -71,6 +92,10 @@ const SettingsPage = () => {
         if (form === 'location') {
              setLocationForm(prev => ({ ...prev, [field]: value }));
         }
+    };
+    
+    const handleWaSettingsChange = (field: keyof WaSettings, value: string) => {
+        setWaSettings(prev => ({ ...prev, [field]: value }));
     };
     
     const handleLocationConfigChange = (field: string, value: any) => {
@@ -235,6 +260,13 @@ const SettingsPage = () => {
             }
         }
     };
+
+    // --- WA Gateway ---
+    const handleWaSettingsSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        localStorage.setItem('waSettings', JSON.stringify(waSettings));
+        setFormStatus({ wa: { message: 'Pengaturan WhatsApp berhasil disimpan!', type: 'success' } });
+    };
     
     const formatPricingScheme = (location: LocationType) => {
         const { pricing_scheme, pricing_config } = location;
@@ -274,6 +306,7 @@ const SettingsPage = () => {
                     <TabButton id="recipients" label="Penerima" />
                     {user?.role === UserRole.ADMIN && <TabButton id="locations" label="Lokasi & Harga" />}
                     {user?.role === UserRole.ADMIN && <TabButton id="users" label="Users" />}
+                    {user?.role === UserRole.ADMIN && <TabButton id="integrations" label="Integrasi" />}
                 </nav>
             </div>
 
@@ -479,6 +512,43 @@ const SettingsPage = () => {
                             </table></div>
                         </div>
                     </div>
+                </div>
+            )}
+
+            {activeTab === 'integrations' && user?.role === UserRole.ADMIN && (
+                <div className="bg-white rounded-lg shadow-md max-w-2xl">
+                     <div className="p-4 border-b"><h3 className="text-lg font-bold">Konfigurasi WhatsApp Gateway</h3></div>
+                     <form onSubmit={handleWaSettingsSubmit} className="p-4 space-y-4">
+                        {renderFormStatus('wa')}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">Send Message API Endpoint</label>
+                            <input type="url" value={waSettings.apiUrl} onChange={(e) => handleWaSettingsChange('apiUrl', e.target.value)} required className={inputClasses} placeholder="https://zapin.my.id/send-message" />
+                        </div>
+                         <div>
+                            <label className="block text-sm font-medium text-gray-700">API Key</label>
+                            <input type="text" value={waSettings.apiKey} onChange={(e) => handleWaSettingsChange('apiKey', e.target.value)} required className={inputClasses} />
+                        </div>
+                         <div>
+                            <label className="block text-sm font-medium text-gray-700">Nomor Pengirim (Sender)</label>
+                            <input type="text" value={waSettings.senderNumber} onChange={(e) => handleWaSettingsChange('senderNumber', e.target.value)} required className={inputClasses} placeholder="628xxxxxxxxxx" />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">Template Pesan</label>
+                            <textarea value={waSettings.messageTemplate} onChange={(e) => handleWaSettingsChange('messageTemplate', e.target.value)} required rows={4} className={inputClasses}></textarea>
+                            <p className="mt-1 text-xs text-gray-500">Gunakan placeholder: 
+                                <code className="bg-gray-200 px-1 rounded">{`{namaPenerima}`}</code>, 
+                                <code className="bg-gray-200 px-1 rounded">{`{awb}`}</code>, 
+                                <code className="bg-gray-200 px-1 rounded">{`{ekspedisi}`}</code>,
+                                <code className="bg-gray-200 px-1 rounded">{`{lokasi}`}</code>,
+                                <code className="bg-gray-200 px-1 rounded">{`{qrLink}`}</code>
+                            </p>
+                        </div>
+                        <div className="pt-2">
+                            <button type="submit" className={btnPrimaryClasses}>
+                                Simpan Pengaturan
+                            </button>
+                        </div>
+                     </form>
                 </div>
             )}
         </div>

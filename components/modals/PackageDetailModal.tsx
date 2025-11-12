@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Package, Recipient, Expedition, PackageStatus, Location } from '../../types';
 import { api } from '../../services/api';
-import { X } from 'lucide-react';
+import { X, CheckCircle, PackageCheck } from 'lucide-react';
 import { calculatePrice } from '../../utils/priceCalculator';
 
 interface PackageDetailModalProps {
   pkg: Package | null;
   isOpen: boolean;
   onClose: () => void;
+  onSuccess: () => void;
 }
 
 const StatusBadge = ({ status }: { status: PackageStatus }) => {
@@ -30,14 +31,26 @@ const DetailRow = ({ label, value }: { label: string, value: React.ReactNode | s
 );
 
 
-const PackageDetailModal: React.FC<PackageDetailModalProps> = ({ pkg, isOpen, onClose }) => {
+const PackageDetailModal: React.FC<PackageDetailModalProps> = ({ pkg, isOpen, onClose, onSuccess }) => {
     const [recipient, setRecipient] = useState<Recipient | null>(null);
     const [expedition, setExpedition] = useState<Expedition | null>(null);
     const [location, setLocation] = useState<Location | null>(null);
     const [currentPrice, setCurrentPrice] = useState(0);
+    const [processing, setProcessing] = useState(false);
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
 
     useEffect(() => {
+        if (!isOpen) {
+            // Reset state when modal is closed
+            setTimeout(() => {
+                setProcessing(false);
+                setError('');
+                setSuccess('');
+            }, 300);
+        }
         if (!pkg) return;
+        
         const fetchDetails = async () => {
             const [recipients, expeditions, locations] = await Promise.all([
                 api.getRecipients(),
@@ -56,7 +69,26 @@ const PackageDetailModal: React.FC<PackageDetailModalProps> = ({ pkg, isOpen, on
             }
         };
         fetchDetails();
-    }, [pkg]);
+    }, [pkg, isOpen]);
+    
+    const handlePickup = async () => {
+        if (!pkg) return;
+        setProcessing(true);
+        setError('');
+        setSuccess('');
+        try {
+            await api.pickupPackage(pkg.awb);
+            setSuccess('Paket berhasil diserahkan!');
+            setTimeout(() => {
+                onSuccess(); // Refresh dashboard data
+                onClose();   // Close modal
+            }, 1500);
+        } catch (err: any) {
+            setError(err.message || 'Gagal menyerahkan paket.');
+        } finally {
+            setProcessing(false);
+        }
+    };
 
     if (!isOpen || !pkg) return null;
     
@@ -74,27 +106,46 @@ const PackageDetailModal: React.FC<PackageDetailModalProps> = ({ pkg, isOpen, on
                         <X size={24} />
                     </button>
                 </div>
-                <div className="p-6 grid grid-cols-1 md:grid-cols-5 gap-6 items-start">
-                    <div className="md:col-span-2 flex justify-center items-start bg-gray-100 p-2 rounded-lg">
-                        <img src={pkg.photo_url} alt={`Foto paket ${pkg.awb}`} className="rounded-lg max-h-80 shadow-md object-contain" />
+                <div className="p-6">
+                    <div className="grid grid-cols-1 md:grid-cols-5 gap-6 items-start">
+                        <div className="md:col-span-2 flex justify-center items-start bg-gray-100 p-2 rounded-lg">
+                            <img src={pkg.photo_url} alt={`Foto paket ${pkg.awb}`} className="rounded-lg max-h-80 shadow-md object-contain" />
+                        </div>
+                        <div className="md:col-span-3">
+                            <dl>
+                                <DetailRow label="Status" value={<StatusBadge status={pkg.status} />} />
+                                <DetailRow label="Penerima" value={`${recipient?.name} (${recipient?.tower} / ${recipient?.unit})`} />
+                                <DetailRow label="Ekspedisi" value={expedition?.name} />
+                                <DetailRow label="Tgl Masuk" value={new Date(pkg.created_at).toLocaleString('id-ID')} />
+                                <DetailRow label="Tgl Diambil" value={pkg.picked_at ? new Date(pkg.picked_at).toLocaleString('id-ID') : '-'} />
+                                 <DetailRow label="Durasi Simpan" value={`${daysStored} hari`} />
+                                 <DetailRow label="Skema Harga" value={location?.pricing_scheme} />
+                                <DetailRow label="Biaya Simpan" value={`Rp ${currentPrice.toLocaleString('id-ID')}`} />
+                                <DetailRow label="Biaya Antar" value={`Rp ${pkg.delivery_fee.toLocaleString('id-ID')}`} />
+                                 <DetailRow label="Total Biaya" value={<span className="font-bold text-lg text-primary-700">Rp {(currentPrice + pkg.delivery_fee).toLocaleString('id-ID')}</span>} />
+                            </dl>
+                        </div>
                     </div>
-                    <div className="md:col-span-3">
-                        <dl>
-                            <DetailRow label="Status" value={<StatusBadge status={pkg.status} />} />
-                            <DetailRow label="Penerima" value={`${recipient?.name} (${recipient?.tower} / ${recipient?.unit})`} />
-                            <DetailRow label="Ekspedisi" value={expedition?.name} />
-                            <DetailRow label="Tgl Masuk" value={new Date(pkg.created_at).toLocaleString('id-ID')} />
-                            <DetailRow label="Tgl Diambil" value={pkg.picked_at ? new Date(pkg.picked_at).toLocaleString('id-ID') : '-'} />
-                             <DetailRow label="Durasi Simpan" value={`${daysStored} hari`} />
-                             <DetailRow label="Skema Harga" value={location?.pricing_scheme} />
-                            <DetailRow label="Biaya Simpan" value={`Rp ${currentPrice.toLocaleString('id-ID')}`} />
-                            <DetailRow label="Biaya Antar" value={`Rp ${pkg.delivery_fee.toLocaleString('id-ID')}`} />
-                             <DetailRow label="Total Biaya" value={<span className="font-bold text-lg text-primary-700">Rp {(currentPrice + pkg.delivery_fee).toLocaleString('id-ID')}</span>} />
-                        </dl>
-                    </div>
+                    {error && <div className="mt-4 p-3 text-sm text-red-700 bg-red-100 rounded-lg">{error}</div>}
+                    {success && (
+                        <div className="mt-4 p-3 text-sm text-green-700 bg-green-100 rounded-lg flex items-center">
+                           <CheckCircle className="w-5 h-5 mr-2"/> {success}
+                        </div>
+                    )}
                 </div>
-                 <div className="flex items-center justify-end p-4 border-t bg-gray-50 rounded-b-lg">
-                        <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md shadow-sm hover:bg-primary-700">
+                 <div className="flex items-center justify-end p-4 border-t bg-gray-50 rounded-b-lg space-x-3">
+                        {pkg.status === PackageStatus.WAITING_PICKUP && (
+                             <button 
+                                 type="button" 
+                                 onClick={handlePickup} 
+                                 disabled={processing || !!success}
+                                 className="flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-green-600 border border-transparent rounded-md shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:bg-green-300 disabled:cursor-not-allowed"
+                             >
+                                 <PackageCheck className="w-5 h-5 mr-2" />
+                                 {processing ? 'Memproses...' : 'Konfirmasi Pengambilan'}
+                             </button>
+                        )}
+                        <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50">
                             Tutup
                         </button>
                  </div>

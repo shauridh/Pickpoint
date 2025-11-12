@@ -1,0 +1,7 @@
+{
+  "name": "Pickpoint Admin Dashboard",
+  "description": "An admin dashboard for a package storage business to manage multi-location package handling, with flexible pricing, role-based access, and analytical reports.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

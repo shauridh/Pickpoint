@@ -11,6 +11,11 @@ export enum PackageStatus {
   DELIVERED = 'Terkirim',
 }
 
+export enum PaymentStatus {
+    UNPAID = 'Belum Lunas',
+    PAID = 'Lunas',
+}
+
 export enum PickupMode {
   AUTO = 'auto',
   MANUAL = 'manual',
@@ -19,6 +24,7 @@ export enum PickupMode {
 export enum PricingScheme {
     FLAT_PER_COLLECT = 'Bayar per Ambil (Flat)',
     PROGRESSIVE_DAILY = 'Harian Progresif',
+    MULTI_PACKAGE_DISCOUNT = 'Diskon Multi-Paket',
 }
 
 export interface User {
@@ -35,6 +41,10 @@ export interface Recipient {
   tower: string;
   unit: string;
   whatsapp: string;
+  location_id: number;
+  subscription_start_date?: string;
+  subscription_end_date?: string;
+  subscription_notif_enabled: boolean;
 }
 
 export interface Expedition {
@@ -46,6 +56,7 @@ export interface Location {
   id: number;
   name: string;
   delivery_enabled: boolean;
+  delivery_fee?: number;
   pickup_mode: PickupMode;
   pricing_scheme: PricingScheme;
   pricing_config: {
@@ -53,6 +64,14 @@ export interface Location {
     free_days?: number;
     first_day_fee?: number;
     subsequent_day_fee?: number;
+    multi_package_first_fee?: number;
+    multi_package_subsequent_fee?: number;
+  };
+  subscription_pricing?: {
+    '1': number;
+    '3': number;
+    '6': number;
+    '12': number;
   };
 }
 
@@ -76,6 +95,9 @@ export interface Package {
   location_id: number;
   price: number;
   delivery_fee: number;
+  pickup_code: string;
+  payment_status: PaymentStatus;
+  payment_link: string;
 }
 
 export interface Log {

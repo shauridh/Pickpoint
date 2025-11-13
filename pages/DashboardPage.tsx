@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { DollarSign, Package, PackageCheck, PlusCircle, QrCode, Inbox } from 'lucide-react';
+import { DollarSign, Package, PackageCheck, PlusCircle, QrCode, Inbox, CreditCard } from 'lucide-react';
 import { api } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
-import { UserRole, Package as PackageType, PackageStatus, Recipient, Expedition, Location } from '../types';
+import { UserRole, Package as PackageType, PackageStatus, Recipient, Expedition, Location, PaymentStatus } from '../types';
 import AddPackageModal from '../components/modals/AddPackageModal';
 import PackageDetailModal from '../components/modals/PackageDetailModal';
 import ScanAndPickupModal from '../components/modals/ScanAndPickupModal';
@@ -25,7 +25,6 @@ const KpiCard = ({ title, value, icon: Icon, color }: { title: string, value: st
     </div>
 );
 
-
 const StatusBadge = ({ status }: { status: PackageStatus }) => {
     const baseClasses = "px-2 py-1 text-xs font-semibold rounded-full";
     switch (status) {
@@ -37,6 +36,19 @@ const StatusBadge = ({ status }: { status: PackageStatus }) => {
             return <span className={`${baseClasses} bg-gray-100 text-gray-800`}>{status}</span>;
     }
 };
+
+const PaymentStatusBadge = ({ status }: { status: PaymentStatus }) => {
+    const baseClasses = "px-2 py-1 text-xs font-semibold rounded-full";
+    switch (status) {
+        case PaymentStatus.UNPAID:
+            return <span className={`${baseClasses} bg-red-100 text-red-800`}>{status}</span>;
+        case PaymentStatus.PAID:
+            return <span className={`${baseClasses} bg-green-100 text-green-800`}>{status}</span>;
+        default:
+            return <span className={`${baseClasses} bg-gray-100 text-gray-800`}>{status}</span>;
+    }
+};
+
 
 type KpiPeriod = 'today' | 'this_week' | 'this_month';
 
@@ -100,7 +112,9 @@ const DashboardPage: React.FC = () => {
                 if (!searchTerm.trim()) return true;
                 const lowercasedTerm = searchTerm.toLowerCase();
                 const recipientName = getRecipientInfo(pkg.recipient_id)?.name.toLowerCase() || '';
-                return pkg.awb.toLowerCase().includes(lowercasedTerm) || recipientName.includes(lowercasedTerm);
+                return pkg.awb.toLowerCase().includes(lowercasedTerm) || 
+                       recipientName.includes(lowercasedTerm) ||
+                       pkg.pickup_code.toLowerCase().includes(lowercasedTerm);
             })
             .filter(pkg => {
                  if (!filterDateFrom) return true;
@@ -168,7 +182,7 @@ const DashboardPage: React.FC = () => {
                          </div>
                         <input 
                             type="text"
-                            placeholder="Cari AWB atau Penerima..."
+                            placeholder="Cari AWB, Kode Unik, Penerima..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             className="p-2 border bg-white border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500 w-full md:w-48 text-gray-900 placeholder-gray-500"
@@ -187,7 +201,7 @@ const DashboardPage: React.FC = () => {
                            className="flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-indigo-600 border border-transparent rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 w-full md:w-auto"
                        >
                            <QrCode className="w-5 h-5 mr-2" />
-                           Scan Paket
+                           Scan & Ambil
                        </button>
                         <button
                             onClick={() => setAddModalOpen(true)}
@@ -203,13 +217,13 @@ const DashboardPage: React.FC = () => {
                         <table className="min-w-full divide-y divide-gray-200">
                             <thead className="bg-gray-50">
                                 <tr>
-                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">AWB</th>
+                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">AWB / Kode Unik</th>
                                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Penerima</th>
-                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ekspedisi</th>
                                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Masuk</th>
                                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Diambil</th>
                                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Biaya</th>
-                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status Bayar</th>
+                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status Paket</th>
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
@@ -217,23 +231,29 @@ const DashboardPage: React.FC = () => {
                                     const recipient = getRecipientInfo(pkg.recipient_id);
                                     const location = getLocationForPackage(pkg);
                                     let currentPrice = pkg.price;
-                                    if (pkg.status === PackageStatus.WAITING_PICKUP && location) {
-                                        currentPrice = calculatePrice(pkg.created_at, location);
+                                    
+                                    if (pkg.status === PackageStatus.WAITING_PICKUP && location && recipient) {
+                                        currentPrice = calculatePrice(pkg, allPackages, location, recipient);
                                     }
                                     const totalBiaya = currentPrice + pkg.delivery_fee;
                                     
                                     return (
                                     <tr key={pkg.id} onClick={() => handleRowClick(pkg)} className="hover:bg-gray-50 cursor-pointer">
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{pkg.awb}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                            <div className="font-medium text-gray-900">{pkg.awb}</div>
+                                            <div className="text-gray-500 font-mono text-xs">{pkg.pickup_code}</div>
+                                        </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm">
                                             <div className="font-medium text-gray-900">{recipient?.name || 'N/A'}</div>
                                             <div className="text-gray-500">{recipient ? `${recipient.tower}/${recipient.unit}` : ''}</div>
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{getExpeditionName(pkg.expedition_id)}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatDate(pkg.created_at)}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatDate(pkg.picked_at)}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-800">
                                             Rp {totalBiaya.toLocaleString('id-ID')}
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                            <PaymentStatusBadge status={pkg.payment_status} />
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                             <StatusBadge status={pkg.status} />
@@ -251,7 +271,7 @@ const DashboardPage: React.FC = () => {
                 </div>
             </div>
             {isAddModalOpen && <AddPackageModal isOpen={isAddModalOpen} onClose={() => setAddModalOpen(false)} onSuccess={fetchData} />}
-            {isDetailModalOpen && selectedPackage && <PackageDetailModal pkg={selectedPackage} isOpen={isDetailModalOpen} onClose={() => setDetailModalOpen(false)} onSuccess={fetchData} />}
+            {isDetailModalOpen && selectedPackage && <PackageDetailModal pkg={selectedPackage} isOpen={isDetailModalOpen} onClose={() => setDetailModalOpen(false)} onSuccess={fetchData} allPackages={allPackages} recipients={recipients} />}
             {isScanModalOpen && <ScanAndPickupModal isOpen={isScanModalOpen} onClose={() => setScanModalOpen(false)} onSuccess={fetchData} />}
         </div>
     );

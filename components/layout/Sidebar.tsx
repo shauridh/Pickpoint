@@ -1,7 +1,7 @@
 import React from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { UserRole } from '../../types';
-import { BarChart, Home, Settings, LogOut, Package } from 'lucide-react';
+import { BarChart, Home, Settings, LogOut, Package, Star } from 'lucide-react';
 
 interface SidebarProps {
     currentPage: string;
@@ -23,6 +23,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setPage, isOpen }) => {
     const navItems: NavItem[] = [
         { id: 'dashboard', label: 'Dashboard', icon: Home, roles: [UserRole.ADMIN, UserRole.PETUGAS] },
         { id: 'reports', label: 'Laporan', icon: BarChart, roles: [UserRole.ADMIN] },
+        { id: 'subscription', label: 'Langganan', icon: Star, roles: [UserRole.ADMIN] },
         { id: 'settings', label: 'Setting', icon: Settings, roles: [UserRole.ADMIN, UserRole.PETUGAS] },
     ];
     

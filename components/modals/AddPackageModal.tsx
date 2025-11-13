@@ -28,7 +28,6 @@ const AddPackageModal: React.FC<AddPackageModalProps> = ({ isOpen, onClose, onSu
     const [selectedRecipientWa, setSelectedRecipientWa] = useState('');
     
     const [isDelivery, setIsDelivery] = useState(false);
-    const [deliveryFee, setDeliveryFee] = useState<number | ''>('');
     const [currentLocation, setCurrentLocation] = useState<Location | null>(null);
 
 
@@ -88,7 +87,6 @@ const AddPackageModal: React.FC<AddPackageModalProps> = ({ isOpen, onClose, onSu
         setMessage('');
         setSelectedRecipientWa('');
         setIsDelivery(false);
-        setDeliveryFee('');
     };
 
     const handleClose = () => {
@@ -103,22 +101,10 @@ const AddPackageModal: React.FC<AddPackageModalProps> = ({ isOpen, onClose, onSu
         setSelectedRecipientWa(selectedRec ? selectedRec.whatsapp : '');
     };
 
-    const handleDeliveryChange = (checked: boolean) => {
-        setIsDelivery(checked);
-        if (!checked) {
-            setDeliveryFee('');
-        }
-    };
-
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!awb || !recipientId || !expeditionId || !user) {
             setError("Harap isi semua kolom yang wajib diisi.");
-            return;
-        }
-
-        if (isDelivery && (deliveryFee === '' || Number(deliveryFee) < 0)) {
-            setError("Harap isi biaya pengantaran yang valid.");
             return;
         }
 
@@ -132,7 +118,7 @@ const AddPackageModal: React.FC<AddPackageModalProps> = ({ isOpen, onClose, onSu
                 recipient_id: Number(recipientId),
                 expedition_id: Number(expeditionId),
                 location_id: user.location_id,
-                delivery_fee: isDelivery ? Number(deliveryFee) : 0,
+                isDelivery: isDelivery,
             });
             setMessage(`Paket dengan AWB ${awb} berhasil ditambahkan!`);
             onSuccess(); // Refresh dashboard data
@@ -204,24 +190,11 @@ const AddPackageModal: React.FC<AddPackageModalProps> = ({ isOpen, onClose, onSu
                                         id="delivery-modal" 
                                         type="checkbox" 
                                         checked={isDelivery} 
-                                        onChange={(e) => handleDeliveryChange(e.target.checked)} 
+                                        onChange={(e) => setIsDelivery(e.target.checked)} 
                                         className="h-4 w-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
                                     />
                                     <label htmlFor="delivery-modal" className="ml-2 block text-sm font-medium text-gray-900">Addon Pengantaran</label>
                                 </div>
-                                {isDelivery && (
-                                    <div className="mt-2">
-                                        <label className="block text-sm font-medium text-gray-700">Biaya Pengantaran (Rp)</label>
-                                        <input 
-                                            type="number" 
-                                            value={deliveryFee} 
-                                            onChange={(e) => setDeliveryFee(e.target.value === '' ? '' : Number(e.target.value))} 
-                                            required 
-                                            placeholder="Masukkan biaya antar"
-                                            className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                                        />
-                                    </div>
-                                )}
                             </div>
                         )}
                         <div>

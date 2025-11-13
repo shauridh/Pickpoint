@@ -16,7 +16,6 @@ const InputPackagePage: React.FC<InputPackagePageProps> = ({ setPage }) => {
     const [expeditionId, setExpeditionId] = useState<number | ''>('');
     const [size, setSize] = useState('');
     const [delivery, setDelivery] = useState(false);
-    const [deliveryFee, setDeliveryFee] = useState<number | ''>('');
     const [photo, setPhoto] = useState<File | null>(null);
     const [message, setMessage] = useState('');
     const [error, setError] = useState('');
@@ -49,13 +48,6 @@ const InputPackagePage: React.FC<InputPackagePageProps> = ({ setPage }) => {
         loadData();
     }, [user]);
 
-    const handleDeliveryChange = (checked: boolean) => {
-        setDelivery(checked);
-        if (!checked) {
-            setDeliveryFee('');
-        }
-    };
-
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!awb || !recipientId || !expeditionId || !user || !currentLocation) {
@@ -68,24 +60,18 @@ const InputPackagePage: React.FC<InputPackagePageProps> = ({ setPage }) => {
             return;
         }
 
-        if (delivery && (deliveryFee === '' || Number(deliveryFee) < 0)) {
-            setError("Harap isi biaya pengantaran yang valid.");
-            return;
-        }
-
         setError('');
         setMessage('');
         setSubmitting(true);
 
         try {
-            // Fix: Add missing 'delivery_fee' property to fix type error.
             await api.addPackage({
                 awb,
                 recipient_id: Number(recipientId),
                 expedition_id: Number(expeditionId),
                 size: size || undefined,
                 location_id: user.location_id,
-                delivery_fee: delivery ? Number(deliveryFee) : 0,
+                isDelivery: delivery,
             });
             setMessage(`Paket dengan AWB ${awb} berhasil ditambahkan!`);
             // Reset form
@@ -94,7 +80,6 @@ const InputPackagePage: React.FC<InputPackagePageProps> = ({ setPage }) => {
             setExpeditionId('');
             setSize('');
             setDelivery(false);
-            setDeliveryFee('');
             setPhoto(null);
             setTimeout(() => setPage('packages'), 2000);
         // Fix: Refactor catch block to be more type-safe, resolving cascading scope errors.
@@ -144,22 +129,9 @@ const InputPackagePage: React.FC<InputPackagePageProps> = ({ setPage }) => {
                  {currentLocation?.delivery_enabled && (
                     <div>
                          <div className="flex items-center">
-                             <input id="delivery" type="checkbox" checked={delivery} onChange={(e) => handleDeliveryChange(e.target.checked)} className="h-4 w-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"/>
+                             <input id="delivery" type="checkbox" checked={delivery} onChange={(e) => setDelivery(e.target.checked)} className="h-4 w-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"/>
                             <label htmlFor="delivery" className="ml-2 block text-sm text-gray-900">Addon Pengantaran</label>
                         </div>
-                        {delivery && (
-                           <div className="mt-2">
-                               <label className="block text-sm font-medium text-gray-700">Biaya Pengantaran (Rp)</label>
-                               <input 
-                                   type="number" 
-                                   value={deliveryFee} 
-                                   onChange={(e) => setDeliveryFee(e.target.value === '' ? '' : Number(e.target.value))} 
-                                   required 
-                                   placeholder="Masukkan biaya antar"
-                                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                               />
-                           </div>
-                       )}
                     </div>
                  )}
                 <div>

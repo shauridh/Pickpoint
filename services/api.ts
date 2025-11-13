@@ -1,6 +1,25 @@
 // Fix: Remove non-existent 'PricingMode' from imports.
-import { User, Recipient, Expedition, Location, SizePricing, Package, UserRole, PackageStatus, PickupMode, PricingScheme } from '../types';
+import { User, Recipient, Expedition, Location, SizePricing, Package, UserRole, PackageStatus, PickupMode, PricingScheme, PaymentStatus } from '../types';
 import { calculatePrice } from '../utils/priceCalculator';
+
+// Fix: Define the WaSettings interface to resolve type errors on waSettings object.
+interface WaSettings {
+    apiUrl: string;
+    apiKey: string;
+    senderNumber: string;
+    regularTemplate: string;
+    subscriptionActivationTemplate: string;
+    subscriptionReminderTemplate: string;
+}
+
+const generatePickupCode = () => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let result = 'PKP-';
+    for (let i = 0; i < 6; i++) {
+        result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+}
 
 // --- MOCK DATA ---
 export const mockUsers: User[] = [
@@ -10,8 +29,9 @@ export const mockUsers: User[] = [
 ];
 
 const mockRecipients: Recipient[] = [
-  { id: 1, name: 'Andi Wijaya', tower: 'A', unit: '101', whatsapp: '081234567890' },
-  { id: 2, name: 'Citra Lestari', tower: 'B', unit: '202', whatsapp: '081234567891' },
+  { id: 1, name: 'Andi Wijaya', tower: 'A', unit: '101', whatsapp: '081234567890', location_id: 1, subscription_start_date: new Date(Date.now() - 15 * 24*60*60*1000).toISOString(), subscription_end_date: new Date(Date.now() + 15 * 24*60*60*1000).toISOString(), subscription_notif_enabled: true },
+  { id: 2, name: 'Citra Lestari', tower: 'B', unit: '202', whatsapp: '081234567891', location_id: 2, subscription_start_date: undefined, subscription_end_date: undefined, subscription_notif_enabled: false },
+  { id: 3, name: 'Dewi Sartika', tower: 'C', unit: '303', whatsapp: '081234567892', location_id: 1, subscription_start_date: new Date(Date.now() - 45 * 24*60*60*1000).toISOString(), subscription_end_date: new Date(Date.now() - 15 * 24*60*60*1000).toISOString(), subscription_notif_enabled: false },
 ];
 
 const mockExpeditions: Expedition[] = [
@@ -26,11 +46,18 @@ const mockLocations: Location[] = [
     id: 1, 
     name: 'Apartemen Jakarta Pusat', 
     delivery_enabled: true, 
+    delivery_fee: 5000,
     pickup_mode: PickupMode.AUTO,
     pricing_scheme: PricingScheme.FLAT_PER_COLLECT,
     pricing_config: {
         flat_rate: 2000,
         free_days: 1
+    },
+    subscription_pricing: {
+        '1': 50000,
+        '3': 135000,
+        '6': 250000,
+        '12': 450000,
     }
   },
   { 
@@ -42,6 +69,23 @@ const mockLocations: Location[] = [
     pricing_config: {
         first_day_fee: 3000,
         subsequent_day_fee: 1500
+    },
+     subscription_pricing: {
+        '1': 40000,
+        '3': 110000,
+        '6': 200000,
+        '12': 380000,
+    }
+  },
+  { 
+    id: 3, 
+    name: 'Toko Surabaya', 
+    delivery_enabled: false, 
+    pickup_mode: PickupMode.AUTO,
+    pricing_scheme: PricingScheme.MULTI_PACKAGE_DISCOUNT,
+    pricing_config: {
+        multi_package_first_fee: 1000,
+        multi_package_subsequent_fee: 500
     }
   },
 ];
@@ -53,12 +97,12 @@ const mockSizePricing: SizePricing[] = [
 ];
 
 const mockPackages: Package[] = [
-  { id: 1, awb: 'PKT001', recipient_id: 1, expedition_id: 1, status: PackageStatus.WAITING_PICKUP, created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), location_id: 1, photo_url: 'https://picsum.photos/seed/pkt001/300/200', price: 0, delivery_fee: 0 },
-  { id: 2, awb: 'PKT002', recipient_id: 2, expedition_id: 2, size: 'Small', status: PackageStatus.WAITING_PICKUP, created_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(), location_id: 2, photo_url: 'https://picsum.photos/seed/pkt002/300/200', price: 0, delivery_fee: 0 },
-  { id: 3, awb: 'PKT003', recipient_id: 1, expedition_id: 3, status: PackageStatus.PICKED_UP, created_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(), picked_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(), location_id: 1, photo_url: 'https://picsum.photos/seed/pkt003/300/200', price: 2000, delivery_fee: 5000 },
-  { id: 4, awb: 'PKT004', recipient_id: 2, expedition_id: 1, status: PackageStatus.PICKED_UP, created_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(), picked_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), location_id: 2, photo_url: 'https://picsum.photos/seed/pkt004/300/200', price: 4500, delivery_fee: 0 },
-  { id: 5, awb: 'PKT005', recipient_id: 1, expedition_id: 2, status: PackageStatus.WAITING_PICKUP, created_at: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(), location_id: 1, photo_url: 'https://picsum.photos/seed/pkt005/300/200', price: 0, delivery_fee: 0 },
-  { id: 6, awb: 'PKT006', recipient_id: 2, expedition_id: 4, status: PackageStatus.WAITING_PICKUP, created_at: new Date().toISOString(), location_id: 1, photo_url: 'https://picsum.photos/seed/pkt006/300/200', price: 0, delivery_fee: 0 },
+  { id: 1, awb: 'PKT001', recipient_id: 1, expedition_id: 1, status: PackageStatus.WAITING_PICKUP, created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), location_id: 1, photo_url: 'https://picsum.photos/seed/pkt001/300/200', price: 0, delivery_fee: 0, pickup_code: 'PKP-ABC123', payment_status: PaymentStatus.UNPAID, payment_link: 'https://pick.point/pay/PKP-ABC123' },
+  { id: 2, awb: 'PKT002', recipient_id: 2, expedition_id: 2, size: 'Small', status: PackageStatus.WAITING_PICKUP, created_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(), location_id: 2, photo_url: 'https://picsum.photos/seed/pkt002/300/200', price: 0, delivery_fee: 0, pickup_code: 'PKP-DEF456', payment_status: PaymentStatus.PAID, payment_link: 'https://pick.point/pay/PKP-DEF456' },
+  { id: 3, awb: 'PKT003', recipient_id: 1, expedition_id: 3, status: PackageStatus.PICKED_UP, created_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(), picked_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(), location_id: 1, photo_url: 'https://picsum.photos/seed/pkt003/300/200', price: 2000, delivery_fee: 5000, pickup_code: 'PKP-GHI789', payment_status: PaymentStatus.PAID, payment_link: 'https://pick.point/pay/PKP-GHI789' },
+  { id: 4, awb: 'PKT004', recipient_id: 2, expedition_id: 1, status: PackageStatus.PICKED_UP, created_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(), picked_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), location_id: 2, photo_url: 'https://picsum.photos/seed/pkt004/300/200', price: 4500, delivery_fee: 0, pickup_code: 'PKP-JKL012', payment_status: PaymentStatus.PAID, payment_link: 'https://pick.point/pay/PKP-JKL012' },
+  { id: 5, awb: 'PKT005', recipient_id: 1, expedition_id: 2, status: PackageStatus.WAITING_PICKUP, created_at: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(), location_id: 1, photo_url: 'https://picsum.photos/seed/pkt005/300/200', price: 0, delivery_fee: 0, pickup_code: 'PKP-MNO345', payment_status: PaymentStatus.UNPAID, payment_link: 'https://pick.point/pay/PKP-MNO345' },
+  { id: 6, awb: 'PKT006', recipient_id: 2, expedition_id: 4, status: PackageStatus.WAITING_PICKUP, created_at: new Date().toISOString(), location_id: 1, photo_url: 'https://picsum.photos/seed/pkt006/300/200', price: 0, delivery_fee: 0, pickup_code: 'PKP-PQR678', payment_status: PaymentStatus.UNPAID, payment_link: 'https://pick.point/pay/PKP-PQR678' },
 ];
 
 // --- API FUNCTIONS ---
@@ -84,6 +128,8 @@ if (!localStorage.getItem('users')) {
 if (!localStorage.getItem('locations')) {
     saveToStorage('locations', mockLocations);
 }
+
+type AddPackagePayload = Omit<Package, 'id' | 'created_at' | 'status' | 'photo_url' | 'price' | 'delivery_fee' | 'pickup_code' | 'payment_status' | 'payment_link'> & { isDelivery: boolean };
 
 class MockApiService {
     packages = getFromStorage('packages', mockPackages);
@@ -234,23 +280,23 @@ class MockApiService {
         ).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     }
 
-    async getPackageByAwb(awb: string) {
+    async getPackageByCode(code: string) {
         await this.delay(300);
-        const pkg = this.packages.find(p => p.awb.toLowerCase() === awb.toLowerCase());
-        if (!pkg) throw new Error("Package not found");
+        const lowercasedCode = code.toLowerCase();
+        const pkg = this.packages.find(p => 
+            p.awb.toLowerCase() === lowercasedCode || 
+            p.pickup_code.toLowerCase() === lowercasedCode
+        );
+        if (!pkg) throw new Error("Paket tidak ditemukan");
         return pkg;
     }
 
-    async sendWaNotification(pkg: Package) {
-        const waSettings = getFromStorage('waSettings', {
-            apiUrl: 'https://zapin.my.id/send-message',
-            apiKey: '',
-            senderNumber: '',
-            messageTemplate: 'HI {namaPenerima}, paket Anda dengan AWB {awb} sudah dapat diambil di pickpoint {lokasi}. Buka link berikut untuk mendapatkan QR Code pengambilan: {qrLink}'
-        });
+    async sendPackageArrivalNotification(pkg: Package) {
+        // Fix: Use Partial<WaSettings> to correctly type waSettings and avoid property access errors.
+        const waSettings = getFromStorage<Partial<WaSettings>>('waSettings', {});
     
-        if (!waSettings.apiUrl || !waSettings.apiKey || !waSettings.senderNumber) {
-            console.log("Konfigurasi WhatsApp Gateway belum lengkap. Notifikasi tidak dikirim.");
+        if (!waSettings.apiUrl || !waSettings.apiKey || !waSettings.senderNumber || !waSettings.regularTemplate) {
+            console.log("Konfigurasi WhatsApp Gateway (Regular) belum lengkap. Notifikasi tidak dikirim.");
             return;
         }
     
@@ -263,14 +309,12 @@ class MockApiService {
             return;
         }
 
-        const qrLink = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(pkg.awb)}`;
-    
-        let message = waSettings.messageTemplate;
+        let message = waSettings.regularTemplate;
         message = message.replace('{namaPenerima}', recipient.name)
                          .replace('{awb}', pkg.awb)
                          .replace('{ekspedisi}', expedition?.name || 'Pengirim')
                          .replace('{lokasi}', location?.name || 'lokasi Anda')
-                         .replace('{qrLink}', qrLink);
+                         .replace('{paymentLink}', pkg.payment_link);
     
         const payload = {
             api_key: waSettings.apiKey,
@@ -279,46 +323,137 @@ class MockApiService {
             message: message,
         };
     
-        console.log('--- SIMULASI PANGGILAN API WHATSAPP ---');
-        console.log(`Endpoint: POST ${waSettings.apiUrl}`);
-        console.log('Request Body:', JSON.stringify(payload, null, 2));
+        console.log('--- SIMULASI NOTIFIKASI PAKET MASUK ---');
+        console.log('Payload:', JSON.stringify(payload, null, 2));
         console.log('------------------------------------');
-        // In a real app, you would fetch() here.
     }
 
-    async addPackage(newPackageData: Omit<Package, 'id' | 'created_at' | 'status' | 'photo_url' | 'price'>) {
+     async sendSubscriptionActivationNotification(recipient: Recipient) {
+        // Fix: Use Partial<WaSettings> to correctly type waSettings and avoid property access errors.
+        const waSettings = getFromStorage<Partial<WaSettings>>('waSettings', {});
+    
+        if (!waSettings.apiUrl || !waSettings.apiKey || !waSettings.senderNumber || !waSettings.subscriptionActivationTemplate) {
+            console.log("Konfigurasi WhatsApp Gateway (Aktivasi Langganan) belum lengkap. Notifikasi tidak dikirim.");
+            return;
+        }
+    
+        if (!recipient.subscription_start_date || !recipient.subscription_end_date) {
+            console.log("Data langganan tidak lengkap untuk notifikasi.");
+            return;
+        }
+
+        let message = waSettings.subscriptionActivationTemplate;
+        message = message.replace('{namaPenerima}', recipient.name)
+                         .replace('{tanggalMulai}', new Date(recipient.subscription_start_date).toLocaleDateString('id-ID'))
+                         .replace('{tanggalBerakhir}', new Date(recipient.subscription_end_date).toLocaleDateString('id-ID'));
+    
+        const payload = {
+            api_key: waSettings.apiKey,
+            sender: waSettings.senderNumber,
+            number: recipient.whatsapp,
+            message: message,
+        };
+    
+        console.log('--- SIMULASI NOTIFIKASI AKTIVASI LANGGANAN ---');
+        console.log('Payload:', JSON.stringify(payload, null, 2));
+        console.log('-------------------------------------------');
+    }
+
+    // In a real app, this would be triggered by a cron job
+    async sendSubscriptionReminderNotification(recipient: Recipient) {
+        // Fix: Use Partial<WaSettings> to correctly type waSettings and avoid property access errors.
+        const waSettings = getFromStorage<Partial<WaSettings>>('waSettings', {});
+    
+        if (!waSettings.apiUrl || !waSettings.apiKey || !waSettings.senderNumber || !waSettings.subscriptionReminderTemplate) {
+            console.log("Konfigurasi WhatsApp Gateway (Pengingat Langganan) belum lengkap. Notifikasi tidak dikirim.");
+            return;
+        }
+
+        const endDate = new Date(recipient.subscription_end_date!);
+        const now = new Date();
+        const diffTime = endDate.getTime() - now.getTime();
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        let message = waSettings.subscriptionReminderTemplate;
+        message = message.replace('{namaPenerima}', recipient.name)
+                         .replace('{tanggalBerakhir}', endDate.toLocaleDateString('id-ID'))
+                         .replace('{sisaHari}', String(diffDays))
+                         .replace('{linkPerpanjang}', `https://pick.point/subscribe/${recipient.id}`); // Simulated link
+    
+        const payload = {
+            api_key: waSettings.apiKey,
+            sender: waSettings.senderNumber,
+            number: recipient.whatsapp,
+            message: message,
+        };
+    
+        console.log('--- SIMULASI NOTIFIKASI PENGINGAT LANGGANAN ---');
+        console.log('Payload:', JSON.stringify(payload, null, 2));
+        console.log('---------------------------------------------');
+    }
+
+    async addPackage(newPackageData: AddPackagePayload) {
         await this.delay(700);
         if (this.packages.some(p => p.awb.toLowerCase() === newPackageData.awb.toLowerCase())) {
             throw new Error("AWB already exists.");
         }
+
+        const location = this.locations.find(l => l.id === newPackageData.location_id);
+        let deliveryFee = 0;
+        if (newPackageData.isDelivery && location?.delivery_enabled && location.delivery_fee) {
+            deliveryFee = location.delivery_fee;
+        }
+
+        const { isDelivery, ...restOfData } = newPackageData;
+        const pickupCode = generatePickupCode();
+
         const newPackage: Package = {
-            ...newPackageData,
+            ...restOfData,
             id: this.packages.length > 0 ? Math.max(...this.packages.map(p => p.id)) + 1 : 1,
             created_at: new Date().toISOString(),
             status: PackageStatus.WAITING_PICKUP,
             photo_url: `https://picsum.photos/seed/${newPackageData.awb}/300/200`,
             price: 0, // Price is calculated on pickup
-            delivery_fee: newPackageData.delivery_fee || 0,
+            delivery_fee: deliveryFee,
+            pickup_code: pickupCode,
+            payment_status: PaymentStatus.UNPAID,
+            payment_link: `https://pick.point/pay/${pickupCode}`, // Simulated payment link
         };
         this.packages.push(newPackage);
         saveToStorage('packages', this.packages);
         
-        await this.sendWaNotification(newPackage);
+        await this.sendPackageArrivalNotification(newPackage);
 
         return newPackage;
     }
 
-    async pickupPackage(awb: string) {
-        await this.delay(500);
-        const pkgIndex = this.packages.findIndex(p => p.awb.toLowerCase() === awb.toLowerCase());
+    async markAsPaid(pickup_code: string) {
+        await this.delay(400);
+        const pkgIndex = this.packages.findIndex(p => p.pickup_code.toLowerCase() === pickup_code.toLowerCase());
         if (pkgIndex === -1) throw new Error("Package not found");
+
+        this.packages[pkgIndex].payment_status = PaymentStatus.PAID;
+        saveToStorage('packages', this.packages);
+        return this.packages[pkgIndex];
+    }
+
+
+    async pickupPackage(pickup_code: string) {
+        await this.delay(500);
+        const pkgIndex = this.packages.findIndex(p => p.pickup_code.toLowerCase() === pickup_code.toLowerCase());
+        if (pkgIndex === -1) throw new Error("Package not found with this pickup code");
+        
         const pkg = this.packages[pkgIndex];
-        if(pkg.status !== PackageStatus.WAITING_PICKUP) throw new Error("Package already picked up");
+        if(pkg.status !== PackageStatus.WAITING_PICKUP) throw new Error("Paket sudah diambil sebelumnya.");
+        if(pkg.payment_status !== PaymentStatus.PAID) throw new Error("Paket belum lunas. Harap selesaikan pembayaran terlebih dahulu.");
 
         const location = this.locations.find(l => l.id === pkg.location_id);
         if (!location) throw new Error("Location configuration for this package not found.");
+        
+        const recipient = this.recipients.find(r => r.id === pkg.recipient_id);
+        if (!recipient) throw new Error("Recipient for this package not found.");
 
-        const finalPrice = calculatePrice(pkg.created_at, location);
+        const finalPrice = calculatePrice(pkg, this.packages, location, recipient);
 
         this.packages[pkgIndex] = {
             ...pkg,
@@ -335,27 +470,62 @@ class MockApiService {
         return this.recipients;
     }
 
-
-
-    async addRecipient(data: Omit<Recipient, 'id'>) {
+    async addRecipient(data: Omit<Recipient, 'id' | 'subscription_start_date' | 'subscription_end_date' | 'subscription_notif_enabled'>) {
         await this.delay(400);
         const newRecipient: Recipient = {
             ...data,
             id: this.recipients.length > 0 ? Math.max(...this.recipients.map(r => r.id)) + 1 : 1,
+            subscription_notif_enabled: false,
         };
         this.recipients.push(newRecipient);
         saveToStorage('recipients', this.recipients);
         return newRecipient;
     }
 
-    async updateRecipient(id: number, data: Omit<Recipient, 'id'>) {
+    async updateRecipient(id: number, data: Omit<Recipient, 'id' | 'subscription_start_date' | 'subscription_end_date' | 'subscription_notif_enabled'>) {
         await this.delay(400);
         const index = this.recipients.findIndex(r => r.id === id);
         if (index === -1) throw new Error("Recipient not found");
-        this.recipients[index] = { id, ...data };
+        this.recipients[index] = { ...this.recipients[index], ...data };
         saveToStorage('recipients', this.recipients);
         return this.recipients[index];
     }
+    
+    async updateSubscription(recipientId: number, details: { startDate?: string; endDate?: string; notifEnabled: boolean; }) {
+        await this.delay(300);
+        const index = this.recipients.findIndex(r => r.id === recipientId);
+        if (index === -1) throw new Error("Recipient not found");
+        this.recipients[index].subscription_start_date = details.startDate;
+        this.recipients[index].subscription_end_date = details.endDate;
+        this.recipients[index].subscription_notif_enabled = details.notifEnabled;
+        saveToStorage('recipients', this.recipients);
+        
+        await this.sendSubscriptionActivationNotification(this.recipients[index]);
+        return this.recipients[index];
+    }
+
+    async terminateSubscription(recipientId: number) {
+        await this.delay(300);
+        const index = this.recipients.findIndex(r => r.id === recipientId);
+        if (index === -1) throw new Error("Recipient not found");
+        
+        this.recipients[index].subscription_end_date = new Date().toISOString();
+        saveToStorage('recipients', this.recipients);
+        return this.recipients[index];
+    }
+
+    async deleteSubscription(recipientId: number) {
+        await this.delay(300);
+        const index = this.recipients.findIndex(r => r.id === recipientId);
+        if (index === -1) throw new Error("Recipient not found");
+
+        this.recipients[index].subscription_start_date = undefined;
+        this.recipients[index].subscription_end_date = undefined;
+        this.recipients[index].subscription_notif_enabled = false;
+        saveToStorage('recipients', this.recipients);
+        return this.recipients[index];
+    }
+
 
     async deleteRecipient(id: number) {
         await this.delay(300);

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { api } from '../../services/api';
-import { Package, Recipient, Location, PackageStatus } from '../../types';
+import { Package, Recipient, Location, PackageStatus, PaymentStatus } from '../../types';
 import { X, CheckCircle } from 'lucide-react';
 
 interface ScanAndPickupModalProps {
@@ -54,12 +54,12 @@ const ScanAndPickupModal: React.FC<ScanAndPickupModalProps> = ({ isOpen, onClose
         handleScanResult(decodedText);
     };
 
-    const handleScanResult = async (awb: string) => {
+    const handleScanResult = async (code: string) => {
         setProcessing(true);
         setError('');
         setMessage('');
         try {
-            const pkg = await api.getPackageByAwb(awb);
+            const pkg = await api.getPackageByCode(code);
             const [rec, loc] = await Promise.all([
                 api.getRecipients().then(data => data.find(d => d.id === pkg.recipient_id)),
                 api.getLocations().then(data => data.find(d => d.id === pkg.location_id)),
@@ -80,7 +80,7 @@ const ScanAndPickupModal: React.FC<ScanAndPickupModalProps> = ({ isOpen, onClose
         setProcessing(true);
         setError('');
         try {
-            await api.pickupPackage(scannedPackage.awb);
+            await api.pickupPackage(scannedPackage.pickup_code);
             setMessage(`Paket ${scannedPackage.awb} berhasil diserahkan!`);
             setTimeout(() => {
                 onSuccess();
@@ -120,20 +120,31 @@ const ScanAndPickupModal: React.FC<ScanAndPickupModalProps> = ({ isOpen, onClose
                     <h3 className="text-xl font-semibold text-center text-gray-800">Detail Paket</h3>
                     <div className="text-sm space-y-2">
                         <p><span className="font-medium text-gray-500">AWB:</span> <span className="font-bold text-gray-900">{scannedPackage.awb}</span></p>
+                        <p><span className="font-medium text-gray-500">Kode Unik:</span> <span className="font-mono text-gray-900">{scannedPackage.pickup_code}</span></p>
                         <p><span className="font-medium text-gray-500">Penerima:</span> {recipient?.name}</p>
-                        <p><span className="font-medium text-gray-500">Status:</span> 
+                        <p><span className="font-medium text-gray-500">Status Paket:</span> 
                             <span className={`ml-2 px-2 py-1 text-xs font-semibold rounded-full ${scannedPackage.status === PackageStatus.PICKED_UP ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
                                 {scannedPackage.status}
                             </span>
                         </p>
+                        <p><span className="font-medium text-gray-500">Status Bayar:</span> 
+                             <span className={`ml-2 px-2 py-1 text-xs font-semibold rounded-full ${scannedPackage.payment_status === PaymentStatus.PAID ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                {scannedPackage.payment_status}
+                            </span>
+                        </p>
                     </div>
                     
-                    {scannedPackage.status === PackageStatus.WAITING_PICKUP ? (
+                    {scannedPackage.status === PackageStatus.WAITING_PICKUP && scannedPackage.payment_status === PaymentStatus.PAID ? (
                         <button onClick={handlePickup} disabled={processing} className="w-full mt-4 flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:bg-green-300">
                             {processing ? 'Memproses...' : 'Konfirmasi Pengambilan'}
                         </button>
                     ) : (
-                        <p className="text-center text-blue-600 bg-blue-100 p-3 rounded-md">Paket ini sudah diambil sebelumnya.</p>
+                         <div className="text-center text-blue-600 bg-blue-100 p-3 rounded-md mt-4">
+                            {scannedPackage.status === PackageStatus.PICKED_UP 
+                                ? "Paket ini sudah diambil sebelumnya."
+                                : "Paket belum lunas. Harap selesaikan pembayaran."
+                            }
+                        </div>
                     )}
 
                     <button onClick={resetState} className="w-full mt-2 flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none">
@@ -145,6 +156,7 @@ const ScanAndPickupModal: React.FC<ScanAndPickupModalProps> = ({ isOpen, onClose
 
         return (
             <div className="p-6">
+                 <p className="text-center text-gray-600 mb-2">Arahkan kamera ke QR Code unik pengambilan.</p>
                 <div id="qr-reader-pickup" className="w-full"></div>
             </div>
         );
@@ -154,7 +166,7 @@ const ScanAndPickupModal: React.FC<ScanAndPickupModalProps> = ({ isOpen, onClose
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4 overflow-y-auto">
             <div className="bg-white rounded-lg shadow-2xl max-w-md w-full relative animate-fade-in-down">
                 <div className="flex justify-between items-center p-4 border-b">
-                     <h2 className="text-xl font-bold text-gray-800">Scan & Serah Paket</h2>
+                     <h2 className="text-xl font-bold text-gray-800">Scan Kode Pengambilan</h2>
                      <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
                         <X size={24} />
                     </button>

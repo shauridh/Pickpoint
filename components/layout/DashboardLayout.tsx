@@ -4,6 +4,7 @@ import Header from './Header';
 import DashboardPage from '../../pages/DashboardPage';
 import ReportsPage from '../../pages/ReportsPage';
 import SettingsPage from '../../pages/SettingsPage';
+import SubscriptionPage from '../../pages/SubscriptionPage';
 import { useAuth } from '../../contexts/AuthContext';
 import { UserRole } from '../../types';
 
@@ -22,6 +23,11 @@ const DashboardLayout = () => {
                 return <DashboardPage />;
             case 'reports':
                 return <ReportsPage />;
+            case 'subscription':
+                if (user?.role === UserRole.ADMIN) {
+                    return <SubscriptionPage />;
+                }
+                return <DashboardPage />; // fallback for unauthorized
             case 'settings':
                  if (user?.role === UserRole.ADMIN || user?.role === UserRole.PETUGAS) {
                     return <SettingsPage />;

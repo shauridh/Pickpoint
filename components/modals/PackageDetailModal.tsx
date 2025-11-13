@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Package, Recipient, Expedition, PackageStatus, Location } from '../../types';
+import { Package, Recipient, Expedition, PackageStatus, Location, PaymentStatus } from '../../types';
 import { api } from '../../services/api';
-import { X, CheckCircle, PackageCheck } from 'lucide-react';
+import { X, CheckCircle, PackageCheck, CreditCard } from 'lucide-react';
 import { calculatePrice } from '../../utils/priceCalculator';
 
 interface PackageDetailModalProps {
@@ -9,7 +9,21 @@ interface PackageDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  allPackages: Package[];
+  recipients: Recipient[];
 }
+
+const PaymentStatusBadge = ({ status }: { status: PaymentStatus }) => {
+    const baseClasses = "px-3 py-1 text-sm font-semibold rounded-full inline-block";
+    switch (status) {
+        case PaymentStatus.UNPAID:
+            return <span className={`${baseClasses} bg-red-100 text-red-800`}>{status}</span>;
+        case PaymentStatus.PAID:
+            return <span className={`${baseClasses} bg-green-100 text-green-800`}>{status}</span>;
+        default:
+            return <span className={`${baseClasses} bg-gray-100 text-gray-800`}>{status}</span>;
+    }
+};
 
 const StatusBadge = ({ status }: { status: PackageStatus }) => {
     const baseClasses = "px-3 py-1 text-sm font-semibold rounded-full inline-block";
@@ -31,7 +45,8 @@ const DetailRow = ({ label, value }: { label: string, value: React.ReactNode | s
 );
 
 
-const PackageDetailModal: React.FC<PackageDetailModalProps> = ({ pkg, isOpen, onClose, onSuccess }) => {
+const PackageDetailModal: React.FC<PackageDetailModalProps> = ({ pkg: initialPkg, isOpen, onClose, onSuccess, allPackages, recipients }) => {
+    const [pkg, setPkg] = useState<Package | null>(initialPkg);
     const [recipient, setRecipient] = useState<Recipient | null>(null);
     const [expedition, setExpedition] = useState<Expedition | null>(null);
     const [location, setLocation] = useState<Location | null>(null);
@@ -42,34 +57,38 @@ const PackageDetailModal: React.FC<PackageDetailModalProps> = ({ pkg, isOpen, on
 
     useEffect(() => {
         if (!isOpen) {
-            // Reset state when modal is closed
             setTimeout(() => {
                 setProcessing(false);
                 setError('');
                 setSuccess('');
             }, 300);
+            return;
         }
-        if (!pkg) return;
+        
+        setPkg(initialPkg); // Update internal state if initialPkg changes
+
+        if (!initialPkg) return;
         
         const fetchDetails = async () => {
-            const [recipients, expeditions, locations] = await Promise.all([
-                api.getRecipients(),
+            const [expeditions, locations] = await Promise.all([
                 api.getExpeditions(),
                 api.getLocations()
             ]);
-            const pkgLocation = locations.find(l => l.id === pkg.location_id) || null;
-            setRecipient(recipients.find(r => r.id === pkg.recipient_id) || null);
-            setExpedition(expeditions.find(e => e.id === pkg.expedition_id) || null);
+            const pkgLocation = locations.find(l => l.id === initialPkg.location_id) || null;
+            const pkgRecipient = recipients.find(r => r.id === initialPkg.recipient_id) || null;
+            
+            setRecipient(pkgRecipient);
+            setExpedition(expeditions.find(e => e.id === initialPkg.expedition_id) || null);
             setLocation(pkgLocation);
             
-            if (pkg.status === PackageStatus.WAITING_PICKUP && pkgLocation) {
-                setCurrentPrice(calculatePrice(pkg.created_at, pkgLocation));
+            if (initialPkg.status === PackageStatus.WAITING_PICKUP && pkgLocation && pkgRecipient) {
+                setCurrentPrice(calculatePrice(initialPkg, allPackages, pkgLocation, pkgRecipient));
             } else {
-                setCurrentPrice(pkg.price);
+                setCurrentPrice(initialPkg.price);
             }
         };
         fetchDetails();
-    }, [pkg, isOpen]);
+    }, [initialPkg, isOpen, allPackages, recipients]);
     
     const handlePickup = async () => {
         if (!pkg) return;
@@ -77,14 +96,30 @@ const PackageDetailModal: React.FC<PackageDetailModalProps> = ({ pkg, isOpen, on
         setError('');
         setSuccess('');
         try {
-            await api.pickupPackage(pkg.awb);
+            await api.pickupPackage(pkg.pickup_code);
             setSuccess('Paket berhasil diserahkan!');
             setTimeout(() => {
-                onSuccess(); // Refresh dashboard data
-                onClose();   // Close modal
+                onSuccess();
+                onClose();
             }, 1500);
         } catch (err: any) {
             setError(err.message || 'Gagal menyerahkan paket.');
+            setProcessing(false);
+        }
+    };
+
+    const handleMarkAsPaid = async () => {
+        if (!pkg) return;
+        setProcessing(true);
+        setError('');
+        setSuccess('');
+        try {
+            const updatedPkg = await api.markAsPaid(pkg.pickup_code);
+            setPkg(updatedPkg); // update local state to re-render UI
+            setSuccess('Pembayaran berhasil dikonfirmasi!');
+            onSuccess(); // Refresh dashboard
+        } catch (err: any) {
+            setError(err.message || 'Gagal mengonfirmasi pembayaran.');
         } finally {
             setProcessing(false);
         }
@@ -96,6 +131,10 @@ const PackageDetailModal: React.FC<PackageDetailModalProps> = ({ pkg, isOpen, on
         ? Math.ceil((new Date(pkg.picked_at).getTime() - new Date(pkg.created_at).getTime()) / (1000 * 3600 * 24))
         : Math.ceil((new Date().getTime() - new Date(pkg.created_at).getTime()) / (1000 * 3600 * 24));
 
+    const isSubscribed = recipient?.subscription_start_date &&
+                         recipient?.subscription_end_date &&
+                         new Date(recipient.subscription_start_date) <= new Date() &&
+                         new Date(recipient.subscription_end_date) >= new Date();
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4 overflow-y-auto">
@@ -113,16 +152,22 @@ const PackageDetailModal: React.FC<PackageDetailModalProps> = ({ pkg, isOpen, on
                         </div>
                         <div className="md:col-span-3">
                             <dl>
-                                <DetailRow label="Status" value={<StatusBadge status={pkg.status} />} />
+                                <DetailRow label="Status Paket" value={<StatusBadge status={pkg.status} />} />
+                                <DetailRow label="Status Bayar" value={<PaymentStatusBadge status={pkg.payment_status} />} />
                                 <DetailRow label="Penerima" value={`${recipient?.name} (${recipient?.tower} / ${recipient?.unit})`} />
-                                <DetailRow label="Ekspedisi" value={expedition?.name} />
+                                {isSubscribed && (
+                                     <DetailRow label="Langganan" value={<span className="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">Aktif</span>} />
+                                )}
                                 <DetailRow label="Tgl Masuk" value={new Date(pkg.created_at).toLocaleString('id-ID')} />
-                                <DetailRow label="Tgl Diambil" value={pkg.picked_at ? new Date(pkg.picked_at).toLocaleString('id-ID') : '-'} />
-                                 <DetailRow label="Durasi Simpan" value={`${daysStored} hari`} />
-                                 <DetailRow label="Skema Harga" value={location?.pricing_scheme} />
+                                {pkg.payment_status === PaymentStatus.PAID && (
+                                    <DetailRow label="Kode Unik" value={<span className="font-mono text-lg bg-gray-100 px-2 py-1 rounded">{pkg.pickup_code}</span>} />
+                                )}
                                 <DetailRow label="Biaya Simpan" value={`Rp ${currentPrice.toLocaleString('id-ID')}`} />
                                 <DetailRow label="Biaya Antar" value={`Rp ${pkg.delivery_fee.toLocaleString('id-ID')}`} />
                                  <DetailRow label="Total Biaya" value={<span className="font-bold text-lg text-primary-700">Rp {(currentPrice + pkg.delivery_fee).toLocaleString('id-ID')}</span>} />
+                                {pkg.payment_status === PaymentStatus.UNPAID && (
+                                     <DetailRow label="Link Bayar" value={<a href={pkg.payment_link} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline break-all">{pkg.payment_link}</a>} />
+                                )}
                             </dl>
                         </div>
                     </div>
@@ -134,11 +179,23 @@ const PackageDetailModal: React.FC<PackageDetailModalProps> = ({ pkg, isOpen, on
                     )}
                 </div>
                  <div className="flex items-center justify-end p-4 border-t bg-gray-50 rounded-b-lg space-x-3">
+                        {pkg.status === PackageStatus.WAITING_PICKUP && pkg.payment_status === PaymentStatus.UNPAID && (
+                            <button
+                                type="button"
+                                onClick={handleMarkAsPaid}
+                                disabled={processing}
+                                className="flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-blue-300"
+                            >
+                                <CreditCard className="w-5 h-5 mr-2" />
+                                {processing ? 'Memproses...' : 'Tandai Lunas'}
+                            </button>
+                        )}
                         {pkg.status === PackageStatus.WAITING_PICKUP && (
                              <button 
                                  type="button" 
                                  onClick={handlePickup} 
-                                 disabled={processing || !!success}
+                                 disabled={processing || !!success || pkg.payment_status !== PaymentStatus.PAID}
+                                 title={pkg.payment_status !== PaymentStatus.PAID ? 'Paket harus lunas terlebih dahulu' : 'Konfirmasi Pengambilan'}
                                  className="flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-green-600 border border-transparent rounded-md shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:bg-green-300 disabled:cursor-not-allowed"
                              >
                                  <PackageCheck className="w-5 h-5 mr-2" />

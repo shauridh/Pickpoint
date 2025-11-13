@@ -8,14 +8,18 @@ interface WaSettings {
     apiUrl: string;
     apiKey: string;
     senderNumber: string;
-    messageTemplate: string;
+    regularTemplate: string;
+    subscriptionActivationTemplate: string;
+    subscriptionReminderTemplate: string;
 }
 
 const defaultWaSettings: WaSettings = {
     apiUrl: 'https://zapin.my.id/send-message',
     apiKey: '',
     senderNumber: '',
-    messageTemplate: 'HI {namaPenerima}, paket Anda dengan AWB {awb} sudah dapat diambil di pickpoint {lokasi}. Buka link berikut untuk mendapatkan QR Code pengambilan: {qrLink}'
+    regularTemplate: 'HI {namaPenerima}, paket Anda dengan AWB {awb} dari {ekspedisi} sudah dapat diambil di pickpoint {lokasi}. Link pembayaran: {paymentLink}',
+    subscriptionActivationTemplate: 'Halo {namaPenerima}, langganan Pickpoint Anda telah berhasil diaktifkan! Masa aktif Anda berlaku dari {tanggalMulai} hingga {tanggalBerakhir}. Nikmati kemudahan penitipan paket tanpa biaya harian.',
+    subscriptionReminderTemplate: 'Langganan Pickpoint Anda akan berakhir pada {tanggalBerakhir} ({sisaHari} hari lagi). Segera perpanjang untuk tetap menikmati keuntungan sebagai pelanggan setia. Klik di sini: {linkPerpanjang}'
 };
 
 
@@ -32,6 +36,7 @@ const SettingsPage = () => {
     const defaultLocationForm = {
         name: '',
         delivery_enabled: false,
+        delivery_fee: 5000,
         pickup_mode: PickupMode.AUTO,
         pricing_scheme: PricingScheme.FLAT_PER_COLLECT,
         pricing_config: {
@@ -39,13 +44,22 @@ const SettingsPage = () => {
             free_days: 1,
             first_day_fee: 3000,
             subsequent_day_fee: 1500,
+            multi_package_first_fee: 1000,
+            multi_package_subsequent_fee: 500,
         },
+        subscription_pricing: {
+            '1': 50000,
+            '3': 135000,
+            '6': 250000,
+            '12': 450000,
+        }
     };
 
     const defaultUserForm = { name: '', email: '', password: '', location_id: '', role: UserRole.PETUGAS };
+    const defaultRecipientForm = { name: '', towerUnit: '', whatsapp: '', location_id: '' };
 
     // State for forms
-    const [recipientForm, setRecipientForm] = useState({ name: '', towerUnit: '', whatsapp: '' });
+    const [recipientForm, setRecipientForm] = useState(defaultRecipientForm);
     const [locationForm, setLocationForm] = useState<Omit<LocationType, 'id'>>(defaultLocationForm);
     const [userForm, setUserForm] = useState(defaultUserForm);
     const [waSettings, setWaSettings] = useState<WaSettings>(defaultWaSettings);
@@ -81,7 +95,9 @@ const SettingsPage = () => {
         fetchData();
         const storedWaSettings = localStorage.getItem('waSettings');
         if (storedWaSettings) {
-            setWaSettings(JSON.parse(storedWaSettings));
+             setWaSettings({ ...defaultWaSettings, ...JSON.parse(storedWaSettings) });
+        } else {
+            setWaSettings(defaultWaSettings);
         }
     }, [fetchData]);
 
@@ -108,11 +124,21 @@ const SettingsPage = () => {
         }));
     }
 
+    const handleSubscriptionPriceChange = (duration: '1' | '3' | '6' | '12', value: number) => {
+        setLocationForm(prev => ({
+            ...prev,
+            subscription_pricing: {
+                ...prev.subscription_pricing,
+                [duration]: value
+            }
+        }));
+    };
+
     // --- Cancel Edit Handlers ---
     const handleCancelEdit = (form: 'recipient' | 'location' | 'user') => {
         if (form === 'recipient') {
             setEditingRecipient(null);
-            setRecipientForm({ name: '', towerUnit: '', whatsapp: '' });
+            setRecipientForm(defaultRecipientForm);
         }
         if (form === 'location') {
             setEditingLocation(null);
@@ -130,7 +156,13 @@ const SettingsPage = () => {
         setFormStatus({});
         try {
             const [tower, unit] = recipientForm.towerUnit.split('/').map(s => s.trim());
-            const payload = { name: recipientForm.name, tower: tower || recipientForm.towerUnit, unit: unit || '', whatsapp: recipientForm.whatsapp };
+            const payload = { 
+                name: recipientForm.name, 
+                tower: tower || recipientForm.towerUnit, 
+                unit: unit || '', 
+                whatsapp: recipientForm.whatsapp,
+                location_id: Number(recipientForm.location_id),
+            };
 
             if (editingRecipient) {
                 await api.updateRecipient(editingRecipient.id, payload);
@@ -148,7 +180,7 @@ const SettingsPage = () => {
 
     const handleEditRecipient = (recipient: Recipient) => {
         setEditingRecipient(recipient);
-        setRecipientForm({ name: recipient.name, towerUnit: `${recipient.tower}/${recipient.unit}`, whatsapp: recipient.whatsapp });
+        setRecipientForm({ name: recipient.name, towerUnit: `${recipient.tower}/${recipient.unit}`, whatsapp: recipient.whatsapp, location_id: String(recipient.location_id) });
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
@@ -186,7 +218,20 @@ const SettingsPage = () => {
 
     const handleEditLocation = (location: LocationType) => {
         setEditingLocation(location);
-        setLocationForm(location);
+        // Ensure default values for new config fields if they don't exist on the location object
+        const locationDataWithDefaults = {
+            ...defaultLocationForm,
+            ...location,
+            pricing_config: {
+                ...defaultLocationForm.pricing_config,
+                ...location.pricing_config
+            },
+            subscription_pricing: {
+                ...defaultLocationForm.subscription_pricing,
+                ...location.subscription_pricing
+            }
+        };
+        setLocationForm(locationDataWithDefaults);
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
@@ -275,6 +320,8 @@ const SettingsPage = () => {
                 return `Flat Rp ${pricing_config.flat_rate?.toLocaleString('id-ID')}, ${pricing_config.free_days} hari gratis`;
             case PricingScheme.PROGRESSIVE_DAILY:
                 return `Progresif Rp ${pricing_config.first_day_fee?.toLocaleString('id-ID')} / hari, lalu Rp ${pricing_config.subsequent_day_fee?.toLocaleString('id-ID')}`;
+            case PricingScheme.MULTI_PACKAGE_DISCOUNT:
+                 return `Multi-Paket Rp ${pricing_config.multi_package_first_fee?.toLocaleString('id-ID')} (pertama), Rp ${pricing_config.multi_package_subsequent_fee?.toLocaleString('id-ID')} (selanjutnya)`;
             default:
                 return 'Tidak ada skema';
         }
@@ -296,6 +343,8 @@ const SettingsPage = () => {
     const inputClasses = "block w-full px-3 py-2 mt-1 bg-white placeholder-gray-400 border border-gray-300 rounded-md shadow-sm appearance-none focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm";
     const btnPrimaryClasses = "flex justify-center w-full px-4 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md shadow-sm hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500";
     const btnSecondaryClasses = "flex justify-center w-full px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500";
+    const CodePlaceholder = ({ text }: { text: string }) => <code className="bg-gray-200 text-gray-700 text-xs px-1 rounded">{`{${text}}`}</code>;
+
 
     return (
         <div className="space-y-6">
@@ -325,6 +374,13 @@ const SettingsPage = () => {
                                     <label className="block text-sm font-medium text-gray-700">Tower/Unit</label>
                                     <input type="text" value={recipientForm.towerUnit} onChange={(e) => handleFormChange('recipient', 'towerUnit', e.target.value)} required className={inputClasses} placeholder="e.g. A/101" />
                                 </div>
+                                 <div>
+                                    <label className="block text-sm font-medium text-gray-700">Lokasi</label>
+                                    <select value={recipientForm.location_id} onChange={(e) => handleFormChange('recipient', 'location_id', e.target.value)} required className={inputClasses}>
+                                        <option value="" disabled>Pilih Lokasi</option>
+                                        {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                                    </select>
+                                </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700">Nomor WA</label>
                                     <input type="text" value={recipientForm.whatsapp} onChange={(e) => handleFormChange('recipient', 'whatsapp', e.target.value)} required className={inputClasses} />
@@ -344,10 +400,17 @@ const SettingsPage = () => {
                          <div className="bg-white rounded-lg shadow-md">
                             <div className="p-4 border-b"><h3 className="text-lg font-bold">Daftar Penerima</h3></div>
                             <div className="p-4 overflow-x-auto"><table className="min-w-full">
-                                <thead className="bg-gray-50"><tr><th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nama</th><th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tower/Unit</th><th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Whatsapp</th><th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Aksi</th></tr></thead>
+                                <thead className="bg-gray-50"><tr>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nama</th>
+                                    {user?.role === UserRole.ADMIN && <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Lokasi</th>}
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tower/Unit</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Whatsapp</th>
+                                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Aksi</th>
+                                </tr></thead>
                                 <tbody className="bg-white divide-y divide-gray-200">
                                     {recipients.map(r => <tr key={r.id}>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{r.name}</td>
+                                        {user?.role === UserRole.ADMIN && <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{locations.find(l=>l.id===r.location_id)?.name || 'N/A'}</td>}
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{r.tower}/{r.unit}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{r.whatsapp}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
@@ -375,16 +438,25 @@ const SettingsPage = () => {
                                     <label className="block text-sm font-medium text-gray-700">Nama Lokasi</label>
                                     <input type="text" value={locationForm.name} onChange={(e) => handleFormChange('location', 'name', e.target.value)} required className={inputClasses} />
                                 </div>
-                                <div className="flex items-center">
-                                    <input id="delivery" type="checkbox" checked={locationForm.delivery_enabled} onChange={(e) => handleFormChange('location', 'delivery_enabled', e.target.checked)} className="h-4 w-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"/>
-                                    <label htmlFor="delivery" className="ml-2 block text-sm text-gray-900">Aktifkan Addon Pengantaran</label>
+                                <div className="space-y-2">
+                                    <div className="flex items-center">
+                                        <input id="delivery" type="checkbox" checked={locationForm.delivery_enabled} onChange={(e) => handleFormChange('location', 'delivery_enabled', e.target.checked)} className="h-4 w-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"/>
+                                        <label htmlFor="delivery" className="ml-2 block text-sm text-gray-900">Aktifkan Addon Pengantaran</label>
+                                    </div>
+                                    {locationForm.delivery_enabled && (
+                                        <div className="pl-6">
+                                            <label className="block text-sm font-medium text-gray-700">Biaya Pengantaran (Rp)</label>
+                                            <input type="number" value={locationForm.delivery_fee} onChange={(e) => handleFormChange('location', 'delivery_fee', Number(e.target.value))} required className={inputClasses} />
+                                        </div>
+                                    )}
                                 </div>
                                 <hr className="my-2"/>
                                 <div>
-                                     <label className="block text-sm font-medium text-gray-700">Skema Harga</label>
+                                     <label className="block text-sm font-medium text-gray-700">Skema Harga Paket</label>
                                       <select value={locationForm.pricing_scheme} onChange={(e) => handleFormChange('location', 'pricing_scheme', e.target.value)} className={inputClasses}>
                                         <option value={PricingScheme.FLAT_PER_COLLECT}>{PricingScheme.FLAT_PER_COLLECT}</option>
                                         <option value={PricingScheme.PROGRESSIVE_DAILY}>{PricingScheme.PROGRESSIVE_DAILY}</option>
+                                        <option value={PricingScheme.MULTI_PACKAGE_DISCOUNT}>{PricingScheme.MULTI_PACKAGE_DISCOUNT}</option>
                                     </select>
                                 </div>
                                 
@@ -414,6 +486,41 @@ const SettingsPage = () => {
                                     </>
                                 )}
                                 
+                                {locationForm.pricing_scheme === PricingScheme.MULTI_PACKAGE_DISCOUNT && (
+                                    <>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700">Harga Paket Pertama (Rp)</label>
+                                            <input type="number" value={locationForm.pricing_config.multi_package_first_fee} onChange={(e) => handleLocationConfigChange('multi_package_first_fee', Number(e.target.value))} required className={inputClasses} />
+                                        </div>
+                                         <div>
+                                            <label className="block text-sm font-medium text-gray-700">Harga Paket Selanjutnya (Rp)</label>
+                                            <input type="number" value={locationForm.pricing_config.multi_package_subsequent_fee} onChange={(e) => handleLocationConfigChange('multi_package_subsequent_fee', Number(e.target.value))} required className={inputClasses} />
+                                        </div>
+                                    </>
+                                )}
+
+                                <hr className="my-4"/>
+                                <h4 className="text-md font-semibold text-gray-800">Harga Langganan</h4>
+                                <div className="space-y-2">
+                                    <div className="grid grid-cols-2 gap-x-4 items-center">
+                                        <label className="text-sm font-medium text-gray-700">1 Bulan (Rp)</label>
+                                        <input type="number" value={locationForm.subscription_pricing?.[1]} onChange={(e) => handleSubscriptionPriceChange('1', Number(e.target.value))} className={inputClasses} />
+                                    </div>
+                                     <div className="grid grid-cols-2 gap-x-4 items-center">
+                                        <label className="text-sm font-medium text-gray-700">3 Bulan (Rp)</label>
+                                        <input type="number" value={locationForm.subscription_pricing?.[3]} onChange={(e) => handleSubscriptionPriceChange('3', Number(e.target.value))} className={inputClasses} />
+                                    </div>
+                                     <div className="grid grid-cols-2 gap-x-4 items-center">
+                                        <label className="text-sm font-medium text-gray-700">6 Bulan (Rp)</label>
+                                        <input type="number" value={locationForm.subscription_pricing?.[6]} onChange={(e) => handleSubscriptionPriceChange('6', Number(e.target.value))} className={inputClasses} />
+                                    </div>
+                                     <div className="grid grid-cols-2 gap-x-4 items-center">
+                                        <label className="text-sm font-medium text-gray-700">12 Bulan (Rp)</label>
+                                        <input type="number" value={locationForm.subscription_pricing?.[12]} onChange={(e) => handleSubscriptionPriceChange('12', Number(e.target.value))} className={inputClasses} />
+                                    </div>
+                                </div>
+
+
                                 <div className="flex flex-col space-y-2 pt-2">
                                     <button type="submit" className={btnPrimaryClasses}>
                                          {editingLocation ? <><Edit2 className="w-4 h-4 mr-2" /> Simpan Perubahan</> : <><PlusCircle className="w-4 h-4 mr-2" /> Tambah</>}
@@ -433,7 +540,11 @@ const SettingsPage = () => {
                                 <tbody className="bg-white divide-y divide-gray-200">{locations.map(l => <tr key={l.id}>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{l.name}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatPricingScheme(l)}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{l.delivery_enabled ? <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Aktif</span> : <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">Tidak Aktif</span>}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                        {l.delivery_enabled 
+                                            ? <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Aktif (Rp {l.delivery_fee?.toLocaleString('id-ID')})</span> 
+                                            : <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">Tidak Aktif</span>}
+                                    </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                         <div className="flex items-center justify-end space-x-2">
                                             <button onClick={() => handleEditLocation(l)} className="text-primary-600 hover:text-primary-800" title="Edit"><Edit2 className="w-4 h-4"/></button>
@@ -516,35 +627,52 @@ const SettingsPage = () => {
             )}
 
             {activeTab === 'integrations' && user?.role === UserRole.ADMIN && (
-                <div className="bg-white rounded-lg shadow-md max-w-2xl">
+                <div className="bg-white rounded-lg shadow-md max-w-3xl">
                      <div className="p-4 border-b"><h3 className="text-lg font-bold">Konfigurasi WhatsApp Gateway</h3></div>
-                     <form onSubmit={handleWaSettingsSubmit} className="p-4 space-y-4">
+                     <form onSubmit={handleWaSettingsSubmit} className="p-4 space-y-6">
                         {renderFormStatus('wa')}
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">Send Message API Endpoint</label>
-                            <input type="url" value={waSettings.apiUrl} onChange={(e) => handleWaSettingsChange('apiUrl', e.target.value)} required className={inputClasses} placeholder="https://zapin.my.id/send-message" />
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">API Endpoint</label>
+                                <input type="url" value={waSettings.apiUrl} onChange={(e) => handleWaSettingsChange('apiUrl', e.target.value)} required className={inputClasses} placeholder="https://zapin.my.id/send-message" />
+                            </div>
+                             <div>
+                                <label className="block text-sm font-medium text-gray-700">API Key</label>
+                                <input type="text" value={waSettings.apiKey} onChange={(e) => handleWaSettingsChange('apiKey', e.target.value)} required className={inputClasses} />
+                            </div>
+                             <div>
+                                <label className="block text-sm font-medium text-gray-700">Nomor Pengirim</label>
+                                <input type="text" value={waSettings.senderNumber} onChange={(e) => handleWaSettingsChange('senderNumber', e.target.value)} required className={inputClasses} placeholder="628xxxxxxxxxx" />
+                            </div>
                         </div>
-                         <div>
-                            <label className="block text-sm font-medium text-gray-700">API Key</label>
-                            <input type="text" value={waSettings.apiKey} onChange={(e) => handleWaSettingsChange('apiKey', e.target.value)} required className={inputClasses} />
+                        
+                        <hr/>
+
+                        <div className="space-y-4">
+                            <div>
+                                <h4 className="font-semibold text-gray-800">Notifikasi Paket Reguler</h4>
+                                <p className="text-xs text-gray-500 mb-1">Pesan ini dikirim saat paket baru diterima.</p>
+                                <textarea value={waSettings.regularTemplate} onChange={(e) => handleWaSettingsChange('regularTemplate', e.target.value)} required rows={4} className={inputClasses}></textarea>
+                                <p className="mt-1 text-xs text-gray-500">Gunakan: <CodePlaceholder text="namaPenerima"/>, <CodePlaceholder text="awb"/>, <CodePlaceholder text="ekspedisi"/>, <CodePlaceholder text="lokasi"/>, <CodePlaceholder text="paymentLink"/></p>
+                            </div>
+
+                            <div>
+                                <h4 className="font-semibold text-gray-800">Notifikasi Langganan: Aktivasi / Perpanjangan</h4>
+                                <p className="text-xs text-gray-500 mb-1">Pesan ini dikirim saat langganan berhasil dibuat atau diperpanjang.</p>
+                                <textarea value={waSettings.subscriptionActivationTemplate} onChange={(e) => handleWaSettingsChange('subscriptionActivationTemplate', e.target.value)} required rows={4} className={inputClasses}></textarea>
+                                <p className="mt-1 text-xs text-gray-500">Gunakan: <CodePlaceholder text="namaPenerima"/>, <CodePlaceholder text="tanggalMulai"/>, <CodePlaceholder text="tanggalBerakhir"/></p>
+                            </div>
+
+                            <div>
+                                <h4 className="font-semibold text-gray-800">Notifikasi Langganan: Pengingat Berakhir</h4>
+                                <p className="text-xs text-gray-500 mb-1">Pesan ini dikirim H-3 sebelum langganan berakhir.</p>
+                                <textarea value={waSettings.subscriptionReminderTemplate} onChange={(e) => handleWaSettingsChange('subscriptionReminderTemplate', e.target.value)} required rows={4} className={inputClasses}></textarea>
+                                <p className="mt-1 text-xs text-gray-500">Gunakan: <CodePlaceholder text="namaPenerima"/>, <CodePlaceholder text="tanggalBerakhir"/>, <CodePlaceholder text="sisaHari"/>, <CodePlaceholder text="linkPerpanjang"/></p>
+                            </div>
                         </div>
-                         <div>
-                            <label className="block text-sm font-medium text-gray-700">Nomor Pengirim (Sender)</label>
-                            <input type="text" value={waSettings.senderNumber} onChange={(e) => handleWaSettingsChange('senderNumber', e.target.value)} required className={inputClasses} placeholder="628xxxxxxxxxx" />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">Template Pesan</label>
-                            <textarea value={waSettings.messageTemplate} onChange={(e) => handleWaSettingsChange('messageTemplate', e.target.value)} required rows={4} className={inputClasses}></textarea>
-                            <p className="mt-1 text-xs text-gray-500">Gunakan placeholder: 
-                                <code className="bg-gray-200 px-1 rounded">{`{namaPenerima}`}</code>, 
-                                <code className="bg-gray-200 px-1 rounded">{`{awb}`}</code>, 
-                                <code className="bg-gray-200 px-1 rounded">{`{ekspedisi}`}</code>,
-                                <code className="bg-gray-200 px-1 rounded">{`{lokasi}`}</code>,
-                                <code className="bg-gray-200 px-1 rounded">{`{qrLink}`}</code>
-                            </p>
-                        </div>
-                        <div className="pt-2">
-                            <button type="submit" className={btnPrimaryClasses}>
+                        
+                        <div className="pt-2 flex justify-end">
+                            <button type="submit" className="px-6 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md shadow-sm hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
                                 Simpan Pengaturan
                             </button>
                         </div>

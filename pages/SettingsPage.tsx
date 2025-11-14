@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../services/api';
 import { User, Recipient, Location as LocationType, UserRole, PricingScheme, PickupMode } from '../types';
-import { PlusCircle, Edit2, Trash2 } from 'lucide-react';
+import { PlusCircle, Edit2, Trash2, Send } from 'lucide-react';
 
 interface WaSettings {
     apiUrl: string;
@@ -11,6 +11,8 @@ interface WaSettings {
     regularTemplate: string;
     subscriptionActivationTemplate: string;
     subscriptionReminderTemplate: string;
+    paymentLinkBaseUrl: string;
+    renewalLinkBaseUrl: string;
 }
 
 const defaultWaSettings: WaSettings = {
@@ -19,7 +21,9 @@ const defaultWaSettings: WaSettings = {
     senderNumber: '',
     regularTemplate: 'HI {namaPenerima}, paket Anda dengan AWB {awb} dari {ekspedisi} sudah dapat diambil di pickpoint {lokasi}. Link pembayaran: {paymentLink}',
     subscriptionActivationTemplate: 'Halo {namaPenerima}, langganan Pickpoint Anda telah berhasil diaktifkan! Masa aktif Anda berlaku dari {tanggalMulai} hingga {tanggalBerakhir}. Nikmati kemudahan penitipan paket tanpa biaya harian.',
-    subscriptionReminderTemplate: 'Langganan Pickpoint Anda akan berakhir pada {tanggalBerakhir} ({sisaHari} hari lagi). Segera perpanjang untuk tetap menikmati keuntungan sebagai pelanggan setia. Klik di sini: {linkPerpanjang}'
+    subscriptionReminderTemplate: 'Langganan Pickpoint Anda akan berakhir pada {tanggalBerakhir} ({sisaHari} hari lagi). Segera perpanjang untuk tetap menikmati keuntungan sebagai pelanggan setia. Klik di sini: {linkPerpanjang}',
+    paymentLinkBaseUrl: 'https://pick.point/pay',
+    renewalLinkBaseUrl: 'https://pick.point/subscribe'
 };
 
 
@@ -63,6 +67,10 @@ const SettingsPage = () => {
     const [locationForm, setLocationForm] = useState<Omit<LocationType, 'id'>>(defaultLocationForm);
     const [userForm, setUserForm] = useState(defaultUserForm);
     const [waSettings, setWaSettings] = useState<WaSettings>(defaultWaSettings);
+    
+    // State for WA Test
+    const [testPhoneNumber, setTestPhoneNumber] = useState('');
+    const [isSendingTest, setIsSendingTest] = useState(false);
 
 
     // State for editing items
@@ -311,6 +319,24 @@ const SettingsPage = () => {
         e.preventDefault();
         localStorage.setItem('waSettings', JSON.stringify(waSettings));
         setFormStatus({ wa: { message: 'Pengaturan WhatsApp berhasil disimpan!', type: 'success' } });
+    };
+
+    const handleSendTestNotification = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!testPhoneNumber) {
+            setFormStatus({ waTest: { message: 'Harap masukkan nomor telepon tujuan.', type: 'error' } });
+            return;
+        }
+        setIsSendingTest(true);
+        setFormStatus({});
+        try {
+            const result = await api.sendTestNotification(testPhoneNumber);
+            setFormStatus({ waTest: { message: result.message, type: 'success' } });
+        } catch (err: any) {
+            setFormStatus({ waTest: { message: err.message, type: 'error' } });
+        } finally {
+            setIsSendingTest(false);
+        }
     };
     
     const formatPricingScheme = (location: LocationType) => {
@@ -627,56 +653,106 @@ const SettingsPage = () => {
             )}
 
             {activeTab === 'integrations' && user?.role === UserRole.ADMIN && (
-                <div className="bg-white rounded-lg shadow-md max-w-3xl">
-                     <div className="p-4 border-b"><h3 className="text-lg font-bold">Konfigurasi WhatsApp Gateway</h3></div>
-                     <form onSubmit={handleWaSettingsSubmit} className="p-4 space-y-6">
-                        {renderFormStatus('wa')}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700">API Endpoint</label>
-                                <input type="url" value={waSettings.apiUrl} onChange={(e) => handleWaSettingsChange('apiUrl', e.target.value)} required className={inputClasses} placeholder="https://zapin.my.id/send-message" />
+                <div className="space-y-6">
+                    <div className="bg-white rounded-lg shadow-md max-w-3xl">
+                         <div className="p-4 border-b"><h3 className="text-lg font-bold">Konfigurasi WhatsApp Gateway</h3></div>
+                         <form onSubmit={handleWaSettingsSubmit} className="p-4 space-y-6">
+                            {renderFormStatus('wa')}
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">API Endpoint</label>
+                                    <input type="url" value={waSettings.apiUrl} onChange={(e) => handleWaSettingsChange('apiUrl', e.target.value)} required className={inputClasses} placeholder="https://zapin.my.id/send-message" />
+                                </div>
+                                 <div>
+                                    <label className="block text-sm font-medium text-gray-700">API Key</label>
+                                    <input type="text" value={waSettings.apiKey} onChange={(e) => handleWaSettingsChange('apiKey', e.target.value)} required className={inputClasses} />
+                                </div>
+                                 <div>
+                                    <label className="block text-sm font-medium text-gray-700">Nomor Pengirim</label>
+                                    <input type="text" value={waSettings.senderNumber} onChange={(e) => handleWaSettingsChange('senderNumber', e.target.value)} required className={inputClasses} placeholder="628xxxxxxxxxx" />
+                                </div>
                             </div>
+                            
+                            <hr/>
+
+                            <div>
+                                <h4 className="font-semibold text-gray-800">Konfigurasi Link Publik</h4>
+                                <p className="text-xs text-gray-500 mb-2">URL ini akan menjadi dasar untuk link yang dikirim ke pelanggan.</p>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700">URL Dasar Link Pembayaran</label>
+                                        <input type="url" value={waSettings.paymentLinkBaseUrl} onChange={(e) => handleWaSettingsChange('paymentLinkBaseUrl', e.target.value)} required className={inputClasses} placeholder="https://domain-anda.com/bayar" />
+                                        <p className="mt-1 text-xs text-gray-500">Hasil: {waSettings.paymentLinkBaseUrl}/<span className="font-mono">PKP-ABC123</span></p>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700">URL Dasar Link Perpanjangan</label>
+                                        <input type="url" value={waSettings.renewalLinkBaseUrl} onChange={(e) => handleWaSettingsChange('renewalLinkBaseUrl', e.target.value)} required className={inputClasses} placeholder="https://domain-anda.com/perpanjang" />
+                                         <p className="mt-1 text-xs text-gray-500">Hasil: {waSettings.renewalLinkBaseUrl}/<span className="font-mono">123</span></p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <hr/>
+
+                            <div className="space-y-4">
+                                <div>
+                                    <h4 className="font-semibold text-gray-800">Template: Notifikasi Paket Reguler</h4>
+                                    <p className="text-xs text-gray-500 mb-1">Pesan ini dikirim saat paket baru diterima.</p>
+                                    <textarea value={waSettings.regularTemplate} onChange={(e) => handleWaSettingsChange('regularTemplate', e.target.value)} required rows={4} className={inputClasses}></textarea>
+                                    <p className="mt-1 text-xs text-gray-500">Gunakan: <CodePlaceholder text="namaPenerima"/>, <CodePlaceholder text="awb"/>, <CodePlaceholder text="ekspedisi"/>, <CodePlaceholder text="lokasi"/>, <CodePlaceholder text="paymentLink"/></p>
+                                </div>
+
+                                <div>
+                                    <h4 className="font-semibold text-gray-800">Template: Aktivasi / Perpanjangan Langganan</h4>
+                                    <p className="text-xs text-gray-500 mb-1">Pesan ini dikirim saat langganan berhasil dibuat atau diperpanjang.</p>
+                                    <textarea value={waSettings.subscriptionActivationTemplate} onChange={(e) => handleWaSettingsChange('subscriptionActivationTemplate', e.target.value)} required rows={4} className={inputClasses}></textarea>
+                                    <p className="mt-1 text-xs text-gray-500">Gunakan: <CodePlaceholder text="namaPenerima"/>, <CodePlaceholder text="tanggalMulai"/>, <CodePlaceholder text="tanggalBerakhir"/></p>
+                                </div>
+
+                                <div>
+                                    <h4 className="font-semibold text-gray-800">Template: Pengingat Berakhir Langganan</h4>
+                                    <p className="text-xs text-gray-500 mb-1">Pesan ini dikirim H-3 sebelum langganan berakhir.</p>
+                                    <textarea value={waSettings.subscriptionReminderTemplate} onChange={(e) => handleWaSettingsChange('subscriptionReminderTemplate', e.target.value)} required rows={4} className={inputClasses}></textarea>
+                                    <p className="mt-1 text-xs text-gray-500">Gunakan: <CodePlaceholder text="namaPenerima"/>, <CodePlaceholder text="tanggalBerakhir"/>, <CodePlaceholder text="sisaHari"/>, <CodePlaceholder text="linkPerpanjang"/></p>
+                                </div>
+                            </div>
+                            
+                            <div className="pt-2 flex justify-end">
+                                <button type="submit" className="px-6 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md shadow-sm hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+                                    Simpan Pengaturan
+                                </button>
+                            </div>
+                         </form>
+                    </div>
+
+                    <div className="bg-white rounded-lg shadow-md max-w-3xl">
+                         <div className="p-4 border-b"><h3 className="text-lg font-bold">Uji Coba Notifikasi</h3></div>
+                         <form onSubmit={handleSendTestNotification} className="p-4 space-y-4">
+                            {renderFormStatus('waTest')}
+                            <p className="text-sm text-gray-600">Gunakan fitur ini untuk memastikan konfigurasi WhatsApp Gateway Anda berfungsi dengan benar. Pesan tes akan dikirim ke nomor tujuan.</p>
                              <div>
-                                <label className="block text-sm font-medium text-gray-700">API Key</label>
-                                <input type="text" value={waSettings.apiKey} onChange={(e) => handleWaSettingsChange('apiKey', e.target.value)} required className={inputClasses} />
+                                <label className="block text-sm font-medium text-gray-700">Nomor Telepon Tujuan (dengan kode negara)</label>
+                                <div className="mt-1 flex rounded-md shadow-sm">
+                                    <input 
+                                        type="text" 
+                                        value={testPhoneNumber}
+                                        onChange={(e) => setTestPhoneNumber(e.target.value)}
+                                        required 
+                                        className="focus:ring-primary-500 focus:border-primary-500 flex-1 block w-full rounded-none rounded-l-md sm:text-sm border-gray-300" 
+                                        placeholder="6281234567890" 
+                                    />
+                                    <button 
+                                        type="submit" 
+                                        disabled={isSendingTest}
+                                        className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-r-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-400"
+                                    >
+                                        <Send className="w-4 h-4 mr-2"/>
+                                        {isSendingTest ? 'Mengirim...' : 'Kirim Tes'}
+                                    </button>
+                                </div>
                             </div>
-                             <div>
-                                <label className="block text-sm font-medium text-gray-700">Nomor Pengirim</label>
-                                <input type="text" value={waSettings.senderNumber} onChange={(e) => handleWaSettingsChange('senderNumber', e.target.value)} required className={inputClasses} placeholder="628xxxxxxxxxx" />
-                            </div>
-                        </div>
-                        
-                        <hr/>
-
-                        <div className="space-y-4">
-                            <div>
-                                <h4 className="font-semibold text-gray-800">Notifikasi Paket Reguler</h4>
-                                <p className="text-xs text-gray-500 mb-1">Pesan ini dikirim saat paket baru diterima.</p>
-                                <textarea value={waSettings.regularTemplate} onChange={(e) => handleWaSettingsChange('regularTemplate', e.target.value)} required rows={4} className={inputClasses}></textarea>
-                                <p className="mt-1 text-xs text-gray-500">Gunakan: <CodePlaceholder text="namaPenerima"/>, <CodePlaceholder text="awb"/>, <CodePlaceholder text="ekspedisi"/>, <CodePlaceholder text="lokasi"/>, <CodePlaceholder text="paymentLink"/></p>
-                            </div>
-
-                            <div>
-                                <h4 className="font-semibold text-gray-800">Notifikasi Langganan: Aktivasi / Perpanjangan</h4>
-                                <p className="text-xs text-gray-500 mb-1">Pesan ini dikirim saat langganan berhasil dibuat atau diperpanjang.</p>
-                                <textarea value={waSettings.subscriptionActivationTemplate} onChange={(e) => handleWaSettingsChange('subscriptionActivationTemplate', e.target.value)} required rows={4} className={inputClasses}></textarea>
-                                <p className="mt-1 text-xs text-gray-500">Gunakan: <CodePlaceholder text="namaPenerima"/>, <CodePlaceholder text="tanggalMulai"/>, <CodePlaceholder text="tanggalBerakhir"/></p>
-                            </div>
-
-                            <div>
-                                <h4 className="font-semibold text-gray-800">Notifikasi Langganan: Pengingat Berakhir</h4>
-                                <p className="text-xs text-gray-500 mb-1">Pesan ini dikirim H-3 sebelum langganan berakhir.</p>
-                                <textarea value={waSettings.subscriptionReminderTemplate} onChange={(e) => handleWaSettingsChange('subscriptionReminderTemplate', e.target.value)} required rows={4} className={inputClasses}></textarea>
-                                <p className="mt-1 text-xs text-gray-500">Gunakan: <CodePlaceholder text="namaPenerima"/>, <CodePlaceholder text="tanggalBerakhir"/>, <CodePlaceholder text="sisaHari"/>, <CodePlaceholder text="linkPerpanjang"/></p>
-                            </div>
-                        </div>
-                        
-                        <div className="pt-2 flex justify-end">
-                            <button type="submit" className="px-6 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md shadow-sm hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
-                                Simpan Pengaturan
-                            </button>
-                        </div>
-                     </form>
+                         </form>
+                    </div>
                 </div>
             )}
         </div>

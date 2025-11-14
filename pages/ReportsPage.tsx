@@ -4,6 +4,7 @@ import { api } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Location as LocationType, UserRole } from '../types';
 import { Package, PackageCheck, Clock, TrendingUp, ArrowRightCircle } from 'lucide-react';
+import SubscriptionReport from '../components/reports/SubscriptionReport';
 
 interface ReportData {
     totalRevenue: number;
@@ -30,8 +31,14 @@ const KpiCard = ({ title, value, icon: Icon, color }: { title: string, value: st
     </div>
 );
 
+const TabButton = ({ id, label, activeTab, setActiveTab }: { id: string, label: string, activeTab: string, setActiveTab: (id: string) => void }) => (
+    <button onClick={() => setActiveTab(id)} className={`px-4 py-2 text-sm font-medium rounded-t-md border-b-2 transition-colors duration-200 ${ activeTab === id ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }`} >
+        {label}
+    </button>
+);
 
-const ReportsPage = () => {
+
+const PackageReport = () => {
     const { user } = useAuth();
     const [reportData, setReportData] = useState<ReportData | null>(null);
     const [locations, setLocations] = useState<LocationType[]>([]);
@@ -86,94 +93,8 @@ const ReportsPage = () => {
         </div>
     );
     
-    const renderCharts = () => (
-        <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                 <KpiCard title="Total Omset" value={`Rp ${reportData?.totalRevenue.toLocaleString('id-ID') ?? 0}`} icon={TrendingUp} color="bg-green-500" />
-                 <KpiCard title="Total Paket Masuk" value={reportData?.totalPackages ?? 0} icon={Package} color="bg-blue-500" />
-                 <KpiCard title="Paket Sudah Diambil" value={reportData?.packagesPickedUp ?? 0} icon={PackageCheck} color="bg-purple-500" />
-                 <KpiCard title="Rata-rata Waktu Ambil" value={`${reportData?.averagePickupTime.toFixed(1) ?? 0} jam`} icon={Clock} color="bg-yellow-500" />
-            </div>
-            
-            <div className="bg-white rounded-lg shadow-md">
-                <div className="p-4 border-b">
-                    <h3 className="text-xl font-semibold text-gray-800">Tren Paket Harian</h3>
-                </div>
-                <div className="p-4">
-                     <ResponsiveContainer width="100%" height={350}>
-                        <ComposedChart data={reportData?.dailyTrend}>
-                            <defs>
-                                <linearGradient id="colorMasuk" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
-                                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.1}/>
-                                </linearGradient>
-                            </defs>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                            <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-                            <YAxis />
-                            <Tooltip />
-                            <Legend />
-                            <Bar dataKey="Masuk" fill="url(#colorMasuk)" barSize={20} />
-                            <Line type="monotone" dataKey="Diambil" stroke="#16a34a" strokeWidth={2} />
-                        </ComposedChart>
-                    </ResponsiveContainer>
-                </div>
-            </div>
-            
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="bg-white rounded-lg shadow-md">
-                     <div className="p-4 border-b">
-                        <h3 className="text-xl font-semibold text-gray-800">Distribusi Ekspedisi</h3>
-                    </div>
-                     <div className="p-4">
-                         <ResponsiveContainer width="100%" height={300}>
-                            <PieChart>
-                                <Pie
-                                    data={reportData?.expeditionDistribution}
-                                    dataKey="value"
-                                    nameKey="name"
-                                    cx="50%"
-                                    cy="50%"
-                                    outerRadius={110}
-                                    fill="#8884d8"
-                                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                                >
-                                    {reportData?.expeditionDistribution.map((entry, index) => (
-                                        <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-                                    ))}
-                                </Pie>
-                                 <Tooltip />
-                                 <Legend />
-                            </PieChart>
-                        </ResponsiveContainer>
-                    </div>
-                </div>
-                 {user?.role === UserRole.ADMIN && !filters.locationId && (
-                     <div className="bg-white rounded-lg shadow-md">
-                        <div className="p-4 border-b">
-                            <h3 className="text-xl font-semibold text-gray-800">Distribusi per Lokasi</h3>
-                        </div>
-                         <div className="p-4">
-                             <ResponsiveContainer width="100%" height={300}>
-                                <BarChart data={reportData?.locationDistribution} layout="vertical" margin={{ top: 5, right: 30, left: 50, bottom: 5 }}>
-                                    <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                                    <XAxis type="number" />
-                                    <YAxis dataKey="name" type="category" width={100} tick={{ fontSize: 12 }} />
-                                    <Tooltip />
-                                    <Legend />
-                                    <Bar dataKey="value" name="Jumlah Paket" fill="#f97316" />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </div>
-                    </div>
-                 )}
-            </div>
-        </>
-    );
-
     return (
-        <div className="space-y-6">
-            <h2 className="text-3xl font-bold text-gray-800">Laporan & Analitik</h2>
+        <>
              <div className="bg-white p-4 rounded-lg shadow-md flex flex-wrap items-center gap-4">
                  <div className="flex items-center gap-2">
                     <label htmlFor="startDate" className="text-sm font-medium">Dari:</label>
@@ -195,8 +116,115 @@ const ReportsPage = () => {
                     </div>
                 )}
             </div>
+            {loading ? renderLoading() : (
+                <div className="space-y-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                        <KpiCard title="Total Omset" value={`Rp ${(reportData?.totalRevenue ?? 0).toLocaleString('id-ID')}`} icon={TrendingUp} color="bg-green-500" />
+                        <KpiCard title="Total Paket Masuk" value={reportData?.totalPackages ?? 0} icon={Package} color="bg-blue-500" />
+                        <KpiCard title="Paket Sudah Diambil" value={reportData?.packagesPickedUp ?? 0} icon={PackageCheck} color="bg-purple-500" />
+                        <KpiCard title="Rata-rata Waktu Ambil" value={`${(reportData?.averagePickupTime ?? 0).toFixed(1)} jam`} icon={Clock} color="bg-yellow-500" />
+                    </div>
+                    
+                    <div className="bg-white rounded-lg shadow-md">
+                        <div className="p-4 border-b">
+                            <h3 className="text-xl font-semibold text-gray-800">Tren Paket Harian</h3>
+                        </div>
+                        <div className="p-4">
+                            <ResponsiveContainer width="100%" height={350}>
+                                <ComposedChart data={reportData?.dailyTrend ?? []}>
+                                    <defs>
+                                        <linearGradient id="colorMasuk" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
+                                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.1}/>
+                                        </linearGradient>
+                                    </defs>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                    <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+                                    <YAxis />
+                                    <Tooltip />
+                                    <Legend />
+                                    <Bar dataKey="Masuk" fill="url(#colorMasuk)" barSize={20} />
+                                    <Line type="monotone" dataKey="Diambil" stroke="#16a34a" strokeWidth={2} />
+                                </ComposedChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div className="bg-white rounded-lg shadow-md">
+                            <div className="p-4 border-b">
+                                <h3 className="text-xl font-semibold text-gray-800">Distribusi Ekspedisi</h3>
+                            </div>
+                            <div className="p-4">
+                                <ResponsiveContainer width="100%" height={300}>
+                                    <PieChart>
+                                        <Pie
+                                            data={reportData?.expeditionDistribution ?? []}
+                                            dataKey="value"
+                                            nameKey="name"
+                                            cx="50%"
+                                            cy="50%"
+                                            outerRadius={110}
+                                            fill="#8884d8"
+                                            label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                                        >
+                                            {(reportData?.expeditionDistribution ?? []).map((entry, index) => (
+                                                <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                                            ))}
+                                        </Pie>
+                                        <Tooltip />
+                                        <Legend />
+                                    </PieChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </div>
+                        {user?.role === UserRole.ADMIN && !filters.locationId && (
+                            <div className="bg-white rounded-lg shadow-md">
+                                <div className="p-4 border-b">
+                                    <h3 className="text-xl font-semibold text-gray-800">Distribusi per Lokasi</h3>
+                                </div>
+                                <div className="p-4">
+                                    <ResponsiveContainer width="100%" height={300}>
+                                        <BarChart data={reportData?.locationDistribution ?? []} layout="vertical" margin={{ top: 5, right: 30, left: 50, bottom: 5 }}>
+                                            <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                                            <XAxis type="number" />
+                                            <YAxis dataKey="name" type="category" width={100} tick={{ fontSize: 12 }} />
+                                            <Tooltip />
+                                            <Legend />
+                                            <Bar dataKey="value" name="Jumlah Paket" fill="#f97316" />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+        </>
+    );
+}
+
+const ReportsPage = () => {
+    const { user } = useAuth();
+    const [activeTab, setActiveTab] = useState('packages');
+
+    return (
+        <div className="space-y-6">
+            <h2 className="text-3xl font-bold text-gray-800">Laporan & Analitik</h2>
             
-            {loading ? renderLoading() : renderCharts()}
+            {user?.role === UserRole.ADMIN && (
+                <div className="border-b border-gray-200">
+                    <nav className="-mb-px flex space-x-4" aria-label="Tabs">
+                        <TabButton id="packages" label="Laporan Paket" activeTab={activeTab} setActiveTab={setActiveTab} />
+                        <TabButton id="subscriptions" label="Laporan Langganan" activeTab={activeTab} setActiveTab={setActiveTab} />
+                    </nav>
+                </div>
+            )}
+            
+            <div className="mt-4">
+                {activeTab === 'packages' && <PackageReport />}
+                {activeTab === 'subscriptions' && user?.role === UserRole.ADMIN && <SubscriptionReport />}
+            </div>
         </div>
     );
 };

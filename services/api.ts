@@ -10,6 +10,8 @@ interface WaSettings {
     regularTemplate: string;
     subscriptionActivationTemplate: string;
     subscriptionReminderTemplate: string;
+    paymentLinkBaseUrl: string;
+    renewalLinkBaseUrl: string;
 }
 
 const generatePickupCode = () => {
@@ -147,6 +149,7 @@ class MockApiService {
         await this.delay(500);
 
         const locationPackages = this.packages.filter(p => !location_id || p.location_id === location_id);
+        const locationRecipients = this.recipients.filter(r => !location_id || r.location_id === location_id);
 
         const now = new Date();
         let startDate: Date;
@@ -183,12 +186,48 @@ class MockApiService {
         });
 
         const paketDiambil = pickedInPeriod.length;
+        const packageRevenue = pickedInPeriod.reduce((sum, p) => sum + p.price, 0);
+        const deliveryRevenue = pickedInPeriod.reduce((sum, p) => sum + p.delivery_fee, 0);
+        
+        const totalPaket = locationPackages.length;
 
-        const revenue = pickedInPeriod.reduce((sum, p) => sum + p.price + p.delivery_fee, 0);
+        // Subscription KPIs
+        const today = new Date();
+        
+        const totalSubscribe = locationRecipients.filter(r => {
+            if (!r.subscription_end_date) return false;
+            return new Date(r.subscription_end_date) >= today;
+        }).length;
 
-        const paketMenunggu = locationPackages.filter(p => p.status === PackageStatus.WAITING_PICKUP).length;
+        const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+        let monthlySubscriptionRevenue = 0;
+        
+        locationRecipients.forEach(r => {
+            if (r.subscription_start_date) {
+                const subStartDate = new Date(r.subscription_start_date);
+                if (subStartDate >= monthStart && subStartDate <= today) {
+                    const location = this.locations.find(l => l.id === r.location_id);
+                    // Simulate revenue based on the first month's price
+                    if (location?.subscription_pricing) {
+                        monthlySubscriptionRevenue += location.subscription_pricing['1'] || 0;
+                    }
+                }
+            }
+        });
+        
+        const totalRevenue = packageRevenue + deliveryRevenue + monthlySubscriptionRevenue;
 
-        return { paketMasuk, paketDiambil, paketMenunggu, revenue };
+
+        return { 
+            paketMasuk, 
+            paketDiambil, 
+            totalPaket,
+            totalSubscribe,
+            packageRevenue, 
+            deliveryRevenue, 
+            monthlySubscriptionRevenue,
+            totalRevenue 
+        };
     }
     
     async getReportData(filters: { startDate: string, endDate: string, locationId?: number }) {
@@ -374,11 +413,15 @@ class MockApiService {
         const diffTime = endDate.getTime() - now.getTime();
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
+        const renewalLinkBase = waSettings.renewalLinkBaseUrl || 'https://your-domain.com/renew';
+        const renewalLink = `${renewalLinkBase.replace(/\/$/, '')}/${recipient.id}`;
+
+
         let message = waSettings.subscriptionReminderTemplate;
         message = message.replace('{namaPenerima}', recipient.name)
                          .replace('{tanggalBerakhir}', endDate.toLocaleDateString('id-ID'))
                          .replace('{sisaHari}', String(diffDays))
-                         .replace('{linkPerpanjang}', `https://pick.point/subscribe/${recipient.id}`); // Simulated link
+                         .replace('{linkPerpanjang}', renewalLink);
     
         const payload = {
             api_key: waSettings.apiKey,
@@ -390,6 +433,30 @@ class MockApiService {
         console.log('--- SIMULASI NOTIFIKASI PENGINGAT LANGGANAN ---');
         console.log('Payload:', JSON.stringify(payload, null, 2));
         console.log('---------------------------------------------');
+    }
+
+    async sendTestNotification(phoneNumber: string) {
+        await this.delay(500);
+        const waSettings = getFromStorage<Partial<WaSettings>>('waSettings', {});
+
+        if (!waSettings.apiUrl || !waSettings.apiKey || !waSettings.senderNumber) {
+            throw new Error("Konfigurasi WhatsApp Gateway belum lengkap. Harap isi API Endpoint, API Key, dan Nomor Pengirim.");
+        }
+        
+        const message = `[PICKPOINT TEST] Halo! Ini adalah pesan tes dari sistem Pickpoint Anda. Konfigurasi berhasil!`;
+
+        const payload = {
+            api_key: waSettings.apiKey,
+            sender: waSettings.senderNumber,
+            number: phoneNumber,
+            message: message,
+        };
+    
+        console.log('--- SIMULASI NOTIFIKASI TES ---');
+        console.log('Payload:', JSON.stringify(payload, null, 2));
+        console.log('-------------------------------');
+
+        return { success: true, message: `Pesan tes berhasil dikirim ke ${phoneNumber}`};
     }
 
     async addPackage(newPackageData: AddPackagePayload) {
@@ -406,6 +473,11 @@ class MockApiService {
 
         const { isDelivery, ...restOfData } = newPackageData;
         const pickupCode = generatePickupCode();
+        
+        const waSettings = getFromStorage<Partial<WaSettings>>('waSettings', {});
+        const paymentLinkBase = waSettings.paymentLinkBaseUrl || 'https://your-domain.com/pay';
+        const paymentLink = `${paymentLinkBase.replace(/\/$/, '')}/${pickupCode}`;
+
 
         const newPackage: Package = {
             ...restOfData,
@@ -417,7 +489,7 @@ class MockApiService {
             delivery_fee: deliveryFee,
             pickup_code: pickupCode,
             payment_status: PaymentStatus.UNPAID,
-            payment_link: `https://pick.point/pay/${pickupCode}`, // Simulated payment link
+            payment_link: paymentLink,
         };
         this.packages.push(newPackage);
         saveToStorage('packages', this.packages);

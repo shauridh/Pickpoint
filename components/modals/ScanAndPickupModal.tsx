@@ -1,20 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { api } from '../../services/api';
-import { Package, Recipient, Location, PackageStatus, PaymentStatus } from '../../types';
-import { X, CheckCircle } from 'lucide-react';
+import { Package } from '../../types';
+import { X } from 'lucide-react';
 
 interface ScanAndPickupModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: () => void;
+  onPackageFound: (pkg: Package) => void;
 }
 
-const ScanAndPickupModal: React.FC<ScanAndPickupModalProps> = ({ isOpen, onClose, onSuccess }) => {
-    const [scannedPackage, setScannedPackage] = useState<Package | null>(null);
-    const [recipient, setRecipient] = useState<Recipient | null>(null);
-    const [location, setLocation] = useState<Location | null>(null);
-    const [message, setMessage] = useState('');
+const ScanAndPickupModal: React.FC<ScanAndPickupModalProps> = ({ isOpen, onClose, onPackageFound }) => {
     const [error, setError] = useState('');
     const [processing, setProcessing] = useState(false);
     const [html5QrCode, setHtml5QrCode] = useState<Html5Qrcode | null>(null);
@@ -24,32 +20,28 @@ const ScanAndPickupModal: React.FC<ScanAndPickupModalProps> = ({ isOpen, onClose
             if (html5QrCode && html5QrCode.isScanning) {
                 html5QrCode.stop().catch(err => console.error("Failed to stop scanner on close.", err));
             }
-            resetState();
             return;
         }
 
-        if (!scannedPackage && !html5QrCode) {
-            const scanner = new Html5Qrcode('qr-reader-pickup');
-            setHtml5QrCode(scanner);
-            const config = { fps: 10, qrbox: { width: 250, height: 250 } };
-            
-            scanner.start({ facingMode: "environment" }, config, handleScanSuccess, (errorMessage) => {})
-            .catch(err => {
-                setError("Kamera tidak ditemukan atau izin ditolak. Pastikan Anda memberikan izin kamera pada browser.");
-            });
-        }
+        const scanner = new Html5Qrcode('qr-reader-pickup');
+        setHtml5QrCode(scanner);
+        const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+        
+        scanner.start({ facingMode: "environment" }, config, handleScanSuccess, (errorMessage) => {})
+        .catch(err => {
+            setError("Kamera tidak ditemukan atau izin ditolak. Pastikan Anda memberikan izin kamera pada browser.");
+        });
 
         return () => {
-             if (html5QrCode && html5QrCode.isScanning) {
-                html5QrCode.stop().catch(err => console.error("Failed to stop scanner on cleanup.", err));
+             if (scanner && scanner.isScanning) {
+                scanner.stop().catch(err => console.error("Failed to stop scanner on cleanup.", err));
              }
         };
-    }, [isOpen, scannedPackage, html5QrCode]);
+    }, [isOpen]);
 
     const handleScanSuccess = (decodedText: string) => {
         if (html5QrCode) {
             html5QrCode.stop().catch(err => console.log("Failed to stop scanner after scan.", err));
-            setHtml5QrCode(null);
         }
         handleScanResult(decodedText);
     };
@@ -57,110 +49,26 @@ const ScanAndPickupModal: React.FC<ScanAndPickupModalProps> = ({ isOpen, onClose
     const handleScanResult = async (code: string) => {
         setProcessing(true);
         setError('');
-        setMessage('');
         try {
             const pkg = await api.getPackageByCode(code);
-            const [rec, loc] = await Promise.all([
-                api.getRecipients().then(data => data.find(d => d.id === pkg.recipient_id)),
-                api.getLocations().then(data => data.find(d => d.id === pkg.location_id)),
-            ]);
-            setScannedPackage(pkg);
-            setRecipient(rec || null);
-            setLocation(loc || null);
+            onPackageFound(pkg);
+            onClose();
         } catch (err: any) {
             setError(err.message || 'Gagal mengambil detail paket.');
-            setScannedPackage(null);
+            // Restart scanner after error
+             setTimeout(() => {
+                setError('');
+                 if(html5QrCode && !html5QrCode.isScanning) {
+                    const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+                    html5QrCode.start({ facingMode: "environment" }, config, handleScanSuccess, (errorMessage) => {}).catch(e => console.error(e));
+                 }
+             }, 2000);
         } finally {
             setProcessing(false);
         }
     };
     
-    const handlePickup = async () => {
-        if (!scannedPackage) return;
-        setProcessing(true);
-        setError('');
-        try {
-            await api.pickupPackage(scannedPackage.pickup_code);
-            setMessage(`Paket ${scannedPackage.awb} berhasil diserahkan!`);
-            setTimeout(() => {
-                onSuccess();
-                onClose();
-            }, 2000);
-        } catch (err: any) {
-            setError(err.message || 'Gagal menyerahkan paket.');
-            setProcessing(false);
-        } 
-    };
-
-    const resetState = () => {
-        setScannedPackage(null);
-        setRecipient(null);
-        setLocation(null);
-        setMessage('');
-        setError('');
-        setProcessing(false);
-        setHtml5QrCode(null);
-    };
-
     if (!isOpen) return null;
-
-    const renderContent = () => {
-        if (message) {
-            return (
-                <div className="text-center p-8 flex flex-col items-center">
-                    <CheckCircle className="w-16 h-16 text-green-500 mb-4" />
-                    <p className="text-lg font-semibold text-green-700">{message}</p>
-                </div>
-            );
-        }
-
-        if (scannedPackage) {
-            return (
-                 <div className="space-y-4 p-6">
-                    <h3 className="text-xl font-semibold text-center text-gray-800">Detail Paket</h3>
-                    <div className="text-sm space-y-2">
-                        <p><span className="font-medium text-gray-500">AWB:</span> <span className="font-bold text-gray-900">{scannedPackage.awb}</span></p>
-                        <p><span className="font-medium text-gray-500">Kode Unik:</span> <span className="font-mono text-gray-900">{scannedPackage.pickup_code}</span></p>
-                        <p><span className="font-medium text-gray-500">Penerima:</span> {recipient?.name}</p>
-                        <p><span className="font-medium text-gray-500">Status Paket:</span> 
-                            <span className={`ml-2 px-2 py-1 text-xs font-semibold rounded-full ${scannedPackage.status === PackageStatus.PICKED_UP ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                                {scannedPackage.status}
-                            </span>
-                        </p>
-                        <p><span className="font-medium text-gray-500">Status Bayar:</span> 
-                             <span className={`ml-2 px-2 py-1 text-xs font-semibold rounded-full ${scannedPackage.payment_status === PaymentStatus.PAID ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                                {scannedPackage.payment_status}
-                            </span>
-                        </p>
-                    </div>
-                    
-                    {scannedPackage.status === PackageStatus.WAITING_PICKUP && scannedPackage.payment_status === PaymentStatus.PAID ? (
-                        <button onClick={handlePickup} disabled={processing} className="w-full mt-4 flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:bg-green-300">
-                            {processing ? 'Memproses...' : 'Konfirmasi Pengambilan'}
-                        </button>
-                    ) : (
-                         <div className="text-center text-blue-600 bg-blue-100 p-3 rounded-md mt-4">
-                            {scannedPackage.status === PackageStatus.PICKED_UP 
-                                ? "Paket ini sudah diambil sebelumnya."
-                                : "Paket belum lunas. Harap selesaikan pembayaran."
-                            }
-                        </div>
-                    )}
-
-                    <button onClick={resetState} className="w-full mt-2 flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none">
-                        Scan Lagi
-                    </button>
-                </div>
-            );
-        }
-
-        return (
-            <div className="p-6">
-                 <p className="text-center text-gray-600 mb-2">Arahkan kamera ke QR Code unik pengambilan.</p>
-                <div id="qr-reader-pickup" className="w-full"></div>
-            </div>
-        );
-    }
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4 overflow-y-auto">
@@ -171,9 +79,12 @@ const ScanAndPickupModal: React.FC<ScanAndPickupModalProps> = ({ isOpen, onClose
                         <X size={24} />
                     </button>
                 </div>
-                {error && <div className="p-3 m-4 text-sm text-red-700 bg-red-100 rounded-lg">{error}</div>}
-                {processing && !message && <div className="text-center p-4">Mencari paket...</div>}
-                {renderContent()}
+                {processing && <div className="text-center p-4">Mencari paket...</div>}
+                <div className="p-6">
+                    <p className="text-center text-gray-600 mb-2">Arahkan kamera ke QR Code unik pengambilan.</p>
+                    <div id="qr-reader-pickup" className="w-full"></div>
+                    {error && <div className="p-3 mt-4 text-sm text-red-700 bg-red-100 rounded-lg">{error}</div>}
+                </div>
             </div>
         </div>
     );

@@ -128,8 +128,8 @@ const PackageDetailModal: React.FC<PackageDetailModalProps> = ({ pkg: initialPkg
     if (!isOpen || !pkg) return null;
     
     const daysStored = pkg.picked_at 
-        ? Math.ceil((new Date(pkg.picked_at).getTime() - new Date(pkg.created_at).getTime()) / (1000 * 3600 * 24))
-        : Math.ceil((new Date().getTime() - new Date(pkg.created_at).getTime()) / (1000 * 3600 * 24));
+        ? Math.max(1, Math.ceil((new Date(pkg.picked_at).getTime() - new Date(pkg.created_at).getTime()) / (1000 * 3600 * 24)))
+        : Math.max(1, Math.ceil((new Date().getTime() - new Date(pkg.created_at).getTime()) / (1000 * 3600 * 24)));
 
     const isSubscribed = recipient?.subscription_start_date &&
                          recipient?.subscription_end_date &&
@@ -159,6 +159,7 @@ const PackageDetailModal: React.FC<PackageDetailModalProps> = ({ pkg: initialPkg
                                      <DetailRow label="Langganan" value={<span className="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">Aktif</span>} />
                                 )}
                                 <DetailRow label="Tgl Masuk" value={new Date(pkg.created_at).toLocaleString('id-ID')} />
+                                <DetailRow label="Lama Simpan" value={`${daysStored} hari`} />
                                 {pkg.payment_status === PaymentStatus.PAID && (
                                     <DetailRow label="Kode Unik" value={<span className="font-mono text-lg bg-gray-100 px-2 py-1 rounded">{pkg.pickup_code}</span>} />
                                 )}

@@ -6,8 +6,8 @@ import { calculatePrice } from '../utils/priceCalculator';
 interface WaSettings {
     apiUrl: string;
     apiKey: string;
+    proxyUrl?: string;
     senderNumber: string;
-    proxyUrl?: string; // Added for CORS proxy
     regularTemplate: string;
     subscriptionActivationTemplate: string;
     subscriptionReminderTemplate: string;
@@ -330,13 +330,63 @@ class MockApiService {
         if (!pkg) throw new Error("Paket tidak ditemukan");
         return pkg;
     }
+    
+    // --- Centralized Notification Sender ---
+    private async sendWaNotification(basePayload: { number: string; message: string; }) {
+        const waSettings = getFromStorage<Partial<WaSettings>>('waSettings', {});
+        
+        if (!waSettings.apiUrl || !waSettings.apiKey || !waSettings.senderNumber) {
+            throw new Error("Konfigurasi WhatsApp Gateway belum lengkap.");
+        }
+
+        let endpoint: string;
+        let finalPayload: object;
+
+        // Gunakan proxy jika URL-nya disediakan
+        if (waSettings.proxyUrl && waSettings.proxyUrl.trim() !== '') {
+            endpoint = waSettings.proxyUrl;
+            finalPayload = {
+                targetApiUrl: waSettings.apiUrl,
+                api_key: waSettings.apiKey,
+                sender: waSettings.senderNumber,
+                ...basePayload,
+            };
+        } else {
+            endpoint = waSettings.apiUrl;
+            finalPayload = {
+                api_key: waSettings.apiKey,
+                sender: waSettings.senderNumber,
+                ...basePayload,
+            };
+        }
+
+        try {
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(finalPayload)
+            });
+
+            if (!response.ok) {
+                const errorBody = await response.text();
+                console.error(`Gagal mengirim notifikasi. Status: ${response.status}. Pesan: ${errorBody}`);
+                throw new Error(`Gagal mengirim pesan. Status: ${response.status}. Pesan dari server: ${errorBody}`);
+            }
+        } catch (error: any) {
+            console.error('Error saat mengirim notifikasi:', error);
+            if (error.message.includes('Failed to fetch')) {
+                throw new Error('Gagal menghubungi server. Ini mungkin karena masalah CORS (jika tidak menggunakan proxy) atau URL Proxy/Endpoint salah.');
+            }
+            throw new Error(error.message || 'Terjadi kesalahan saat menghubungi WhatsApp Gateway.');
+        }
+    }
+
 
     async sendPackageArrivalNotification(pkg: Package) {
-        // Fix: Use Partial<WaSettings> to correctly type waSettings and avoid property access errors.
         const waSettings = getFromStorage<Partial<WaSettings>>('waSettings', {});
     
-        if (!waSettings.apiUrl || !waSettings.apiKey || !waSettings.senderNumber || !waSettings.regularTemplate) {
-            console.log("Konfigurasi WhatsApp Gateway (Regular) belum lengkap. Notifikasi tidak dikirim.");
+        if (!waSettings.regularTemplate) {
+            console.log("Template notifikasi paket reguler belum diatur. Notifikasi tidak dikirim.");
             return;
         }
     
@@ -349,45 +399,26 @@ class MockApiService {
             return;
         }
 
-        let message = waSettings.regularTemplate;
-        message = message.replace('{namaPenerima}', recipient.name)
+        let message = waSettings.regularTemplate
+                         .replace('{namaPenerima}', recipient.name)
                          .replace('{awb}', pkg.awb)
                          .replace('{ekspedisi}', expedition?.name || 'Pengirim')
                          .replace('{lokasi}', location?.name || 'lokasi Anda')
                          .replace('{paymentLink}', pkg.payment_link);
-    
-        const payload = {
-            api_key: waSettings.apiKey,
-            sender: waSettings.senderNumber,
-            number: recipient.whatsapp,
-            message: message,
-        };
-    
-        const endpoint = waSettings.proxyUrl ? `${waSettings.proxyUrl.replace(/\/$/, '')}/${waSettings.apiUrl}` : waSettings.apiUrl;
         
         try {
-            const response = await fetch(endpoint, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            if (response.ok) {
-                console.log(`Notifikasi paket masuk untuk ${recipient.name} berhasil dikirim.`);
-            } else {
-                const errorBody = await response.text();
-                console.error(`Gagal mengirim notifikasi paket masuk. Status: ${response.status}. Pesan: ${errorBody}`);
-            }
-        } catch (error) {
-            console.error('Error saat mengirim notifikasi paket masuk:', error);
+            await this.sendWaNotification({ number: recipient.whatsapp, message });
+            console.log(`Notifikasi paket masuk untuk ${recipient.name} berhasil dikirim.`);
+        } catch(error) {
+            console.error('Gagal mengirim notifikasi paket masuk:', error);
         }
     }
 
      async sendSubscriptionActivationNotification(recipient: Recipient) {
-        // Fix: Use Partial<WaSettings> to correctly type waSettings and avoid property access errors.
         const waSettings = getFromStorage<Partial<WaSettings>>('waSettings', {});
     
-        if (!waSettings.apiUrl || !waSettings.apiKey || !waSettings.senderNumber || !waSettings.subscriptionActivationTemplate) {
-            console.log("Konfigurasi WhatsApp Gateway (Aktivasi Langganan) belum lengkap. Notifikasi tidak dikirim.");
+        if (!waSettings.subscriptionActivationTemplate) {
+            console.log("Template notifikasi aktivasi langganan belum diatur. Notifikasi tidak dikirim.");
             return;
         }
     
@@ -396,44 +427,25 @@ class MockApiService {
             return;
         }
 
-        let message = waSettings.subscriptionActivationTemplate;
-        message = message.replace('{namaPenerima}', recipient.name)
+        let message = waSettings.subscriptionActivationTemplate
+                         .replace('{namaPenerima}', recipient.name)
                          .replace('{tanggalMulai}', new Date(recipient.subscription_start_date).toLocaleDateString('id-ID'))
                          .replace('{tanggalBerakhir}', new Date(recipient.subscription_end_date).toLocaleDateString('id-ID'));
     
-        const payload = {
-            api_key: waSettings.apiKey,
-            sender: waSettings.senderNumber,
-            number: recipient.whatsapp,
-            message: message,
-        };
-    
-        const endpoint = waSettings.proxyUrl ? `${waSettings.proxyUrl.replace(/\/$/, '')}/${waSettings.apiUrl}` : waSettings.apiUrl;
-
         try {
-            const response = await fetch(endpoint, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            if (response.ok) {
-                console.log(`Notifikasi aktivasi langganan untuk ${recipient.name} berhasil dikirim.`);
-            } else {
-                const errorBody = await response.text();
-                console.error(`Gagal mengirim notifikasi aktivasi. Status: ${response.status}. Pesan: ${errorBody}`);
-            }
-        } catch (error) {
-            console.error('Error saat mengirim notifikasi aktivasi:', error);
+            await this.sendWaNotification({ number: recipient.whatsapp, message });
+            console.log(`Notifikasi aktivasi langganan untuk ${recipient.name} berhasil dikirim.`);
+        } catch(error) {
+            console.error('Gagal mengirim notifikasi aktivasi langganan:', error);
         }
     }
 
     // In a real app, this would be triggered by a cron job
     async sendSubscriptionReminderNotification(recipient: Recipient) {
-        // Fix: Use Partial<WaSettings> to correctly type waSettings and avoid property access errors.
         const waSettings = getFromStorage<Partial<WaSettings>>('waSettings', {});
     
-        if (!waSettings.apiUrl || !waSettings.apiKey || !waSettings.senderNumber || !waSettings.subscriptionReminderTemplate) {
-            console.log("Konfigurasi WhatsApp Gateway (Pengingat Langganan) belum lengkap. Notifikasi tidak dikirim.");
+        if (!waSettings.subscriptionReminderTemplate) {
+            console.log("Template notifikasi pengingat langganan belum diatur. Notifikasi tidak dikirim.");
             return;
         }
 
@@ -445,78 +457,25 @@ class MockApiService {
         const renewalLinkBase = waSettings.renewalLinkBaseUrl || 'https://your-domain.com/renew';
         const renewalLink = `${renewalLinkBase.replace(/\/$/, '')}/${recipient.id}`;
 
-
-        let message = waSettings.subscriptionReminderTemplate;
-        message = message.replace('{namaPenerima}', recipient.name)
+        let message = waSettings.subscriptionReminderTemplate
+                         .replace('{namaPenerima}', recipient.name)
                          .replace('{tanggalBerakhir}', endDate.toLocaleDateString('id-ID'))
                          .replace('{sisaHari}', String(diffDays))
                          .replace('{linkPerpanjang}', renewalLink);
-    
-        const payload = {
-            api_key: waSettings.apiKey,
-            sender: waSettings.senderNumber,
-            number: recipient.whatsapp,
-            message: message,
-        };
-    
-        const endpoint = waSettings.proxyUrl ? `${waSettings.proxyUrl.replace(/\/$/, '')}/${waSettings.apiUrl}` : waSettings.apiUrl;
-
+        
         try {
-            const response = await fetch(endpoint, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            if (response.ok) {
-                console.log(`Notifikasi pengingat langganan untuk ${recipient.name} berhasil dikirim.`);
-            } else {
-                const errorBody = await response.text();
-                console.error(`Gagal mengirim notifikasi pengingat. Status: ${response.status}. Pesan: ${errorBody}`);
-            }
-        } catch (error) {
-            console.error('Error saat mengirim notifikasi pengingat:', error);
+            await this.sendWaNotification({ number: recipient.whatsapp, message });
+            console.log(`Notifikasi pengingat langganan untuk ${recipient.name} berhasil dikirim.`);
+        } catch(error) {
+            console.error('Gagal mengirim notifikasi pengingat langganan:', error);
         }
     }
 
     async sendTestNotification(phoneNumber: string) {
         await this.delay(500);
-        const waSettings = getFromStorage<Partial<WaSettings>>('waSettings', {});
-
-        if (!waSettings.apiUrl || !waSettings.apiKey || !waSettings.senderNumber) {
-            throw new Error("Konfigurasi WhatsApp Gateway belum lengkap. Harap isi API Endpoint, API Key, dan Nomor Pengirim.");
-        }
-        
         const message = `[PICKPOINT TEST] Halo! Ini adalah pesan tes dari sistem Pickpoint Anda. Konfigurasi berhasil!`;
-
-        const payload = {
-            api_key: waSettings.apiKey,
-            sender: waSettings.senderNumber,
-            number: phoneNumber,
-            message: message,
-        };
-    
-        const endpoint = waSettings.proxyUrl ? `${waSettings.proxyUrl.replace(/\/$/, '')}/${waSettings.apiUrl}` : waSettings.apiUrl;
-
-        try {
-            const response = await fetch(endpoint, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-    
-            if (!response.ok) {
-                const errorBody = await response.text();
-                throw new Error(`Gagal mengirim pesan. Status: ${response.status}. Pesan dari server: ${errorBody}`);
-            }
-            
-            await response.json();
-            
-            return { success: true, message: `Pesan tes berhasil dikirim ke ${phoneNumber}`};
-    
-        } catch (error: any) {
-            console.error('Error sending test notification:', error);
-            throw new Error(error.message || 'Terjadi kesalahan saat menghubungi WhatsApp Gateway. Pastikan URL Proxy (jika ada) dan Endpoint sudah benar.');
-        }
+        await this.sendWaNotification({ number: phoneNumber, message });
+        return { success: true, message: `Pesan tes berhasil dikirim ke ${phoneNumber}`};
     }
 
     async addPackage(newPackageData: AddPackagePayload) {

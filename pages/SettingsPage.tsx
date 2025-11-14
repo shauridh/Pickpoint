@@ -7,8 +7,8 @@ import { PlusCircle, Edit2, Trash2, Send } from 'lucide-react';
 interface WaSettings {
     apiUrl: string;
     apiKey: string;
+    proxyUrl?: string;
     senderNumber: string;
-    proxyUrl: string; // Added for CORS proxy
     regularTemplate: string;
     subscriptionActivationTemplate: string;
     subscriptionReminderTemplate: string;
@@ -19,8 +19,8 @@ interface WaSettings {
 const defaultWaSettings: WaSettings = {
     apiUrl: 'https://zapin.my.id/send-message',
     apiKey: '',
-    senderNumber: '',
     proxyUrl: '',
+    senderNumber: '',
     regularTemplate: 'HI {namaPenerima}, paket Anda dengan AWB {awb} dari {ekspedisi} sudah dapat diambil di pickpoint {lokasi}. Link pembayaran: {paymentLink}',
     subscriptionActivationTemplate: 'Halo {namaPenerima}, langganan Pickpoint Anda telah berhasil diaktifkan! Masa aktif Anda berlaku dari {tanggalMulai} hingga {tanggalBerakhir}. Nikmati kemudahan penitipan paket tanpa biaya harian.',
     subscriptionReminderTemplate: 'Langganan Pickpoint Anda akan berakhir pada {tanggalBerakhir} ({sisaHari} hari lagi). Segera perpanjang untuk tetap menikmati keuntungan sebagai pelanggan setia. Klik di sini: {linkPerpanjang}',
@@ -678,24 +678,34 @@ const SettingsPage = () => {
                     <div className="bg-white rounded-lg shadow-md max-w-3xl">
                          <div className="p-4 border-b"><h3 className="text-lg font-bold">Konfigurasi WhatsApp Gateway</h3></div>
                          <form onSubmit={handleWaSettingsSubmit} className="p-4 space-y-6">
+                             <div className="bg-blue-50 border-l-4 border-blue-400 text-blue-800 p-4 rounded-md" role="alert">
+                                <h3 className="font-bold">Solusi untuk Error "Failed to Fetch" (CORS)</h3>
+                                <p className="text-sm mt-1">Jika Anda mengalami error saat mengirim notifikasi, kemungkinan besar disebabkan oleh pembatasan CORS dari server API WhatsApp.</p>
+                                <ul className="list-disc list-inside text-sm mt-2 space-y-1">
+                                    <li><strong>Cara Mengatasi:</strong> Gunakan "CORS Proxy URL". Proxy ini bertindak sebagai perantara yang aman antara aplikasi Anda dan API WhatsApp.</li>
+                                    <li><strong>Keuntungan:</strong> Menghilangkan error CORS dan menyembunyikan API Key Anda dari browser, sehingga lebih aman.</li>
+                                    <li><strong>Tanpa Proxy:</strong> Panggilan akan dilakukan langsung dari browser, yang dapat menyebabkan error CORS dan mengekspos API Key Anda.</li>
+                                </ul>
+                                <p className="text-sm mt-2">Untuk production, penggunaan proxy sangat direkomendasikan.</p>
+                            </div>
                             {renderFormStatus('wa')}
                             <div className="space-y-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700">API Endpoint</label>
-                                    <input type="url" value={waSettings.apiUrl} onChange={(e) => handleWaSettingsChange('apiUrl', e.target.value)} required className={inputClasses} placeholder="https://zapin.my.id/send-message" />
-                                </div>
-                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700">API Key</label>
-                                    <input type="text" value={waSettings.apiKey} onChange={(e) => handleWaSettingsChange('apiKey', e.target.value)} required className={inputClasses} />
-                                </div>
-                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700">Nomor Pengirim</label>
-                                    <input type="text" value={waSettings.senderNumber} onChange={(e) => handleWaSettingsChange('senderNumber', e.target.value)} required className={inputClasses} placeholder="628xxxxxxxxxx" />
+                                    <label htmlFor="apiUrl" className="block text-sm font-medium text-gray-700">API Endpoint</label>
+                                    <input id="apiUrl" type="url" value={waSettings.apiUrl} onChange={(e) => handleWaSettingsChange('apiUrl', e.target.value)} required className={inputClasses} placeholder="https://zapin.my.id/send-message" />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700">CORS Proxy URL (Opsional)</label>
-                                    <input type="url" value={waSettings.proxyUrl} onChange={(e) => handleWaSettingsChange('proxyUrl', e.target.value)} className={inputClasses} placeholder="https://your-proxy-url.com/" />
-                                    <p className="mt-1 text-xs text-gray-500">Isi jika Anda menggunakan proxy untuk mengatasi masalah CORS dan mengamankan API Key.</p>
+                                    <label htmlFor="proxyUrl" className="block text-sm font-medium text-gray-700">CORS Proxy URL <span className="text-gray-400 font-normal">(Opsional)</span></label>
+                                    <input id="proxyUrl" type="url" value={waSettings.proxyUrl || ''} onChange={(e) => handleWaSettingsChange('proxyUrl', e.target.value)} className={inputClasses} placeholder="e.g. https://your-proxy-function.com" />
+                                    <p className="mt-1 text-xs text-gray-500">Isi ini untuk mengatasi error CORS dan mengamankan API Key Anda.</p>
+                                </div>
+                                 <div>
+                                    <label htmlFor="apiKey" className="block text-sm font-medium text-gray-700">API Key</label>
+                                    <input id="apiKey" type="text" value={waSettings.apiKey} onChange={(e) => handleWaSettingsChange('apiKey', e.target.value)} required className={inputClasses} />
+                                </div>
+                                 <div>
+                                    <label htmlFor="senderNumber" className="block text-sm font-medium text-gray-700">Nomor Pengirim</label>
+                                    <input id="senderNumber" type="text" value={waSettings.senderNumber} onChange={(e) => handleWaSettingsChange('senderNumber', e.target.value)} required className={inputClasses} placeholder="628xxxxxxxxxx" />
                                 </div>
                             </div>
                             

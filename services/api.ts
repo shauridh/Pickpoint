@@ -4,9 +4,8 @@ import { calculatePrice } from '../utils/priceCalculator';
 
 // Fix: Define the WaSettings interface to resolve type errors on waSettings object.
 interface WaSettings {
-    apiUrl: string;
+    notificationUrl: string; // Simplified to a single URL
     apiKey: string;
-    proxyUrl?: string;
     senderNumber: string;
     regularTemplate: string;
     subscriptionActivationTemplate: string;
@@ -335,47 +334,50 @@ class MockApiService {
     private async sendWaNotification(basePayload: { number: string; message: string; }) {
         const waSettings = getFromStorage<Partial<WaSettings>>('waSettings', {});
         
-        if (!waSettings.apiUrl || !waSettings.apiKey || !waSettings.senderNumber) {
-            throw new Error("Konfigurasi WhatsApp Gateway belum lengkap.");
+        const endpoint = waSettings.notificationUrl;
+
+        if (!endpoint || endpoint.trim() === '') {
+          throw new Error("URL Pengiriman Notifikasi belum diatur di halaman Pengaturan > Integrasi.");
+        }
+        
+        if (!waSettings.apiKey || !waSettings.senderNumber) {
+            throw new Error("Konfigurasi WhatsApp (API Key dan Nomor Pengirim) belum lengkap.");
         }
 
-        let endpoint: string;
-        let finalPayload: object;
+        const finalPayload = {
+            api_key: waSettings.apiKey,
+            sender: waSettings.senderNumber,
+            ...basePayload,
+        };
 
-        // Gunakan proxy jika URL-nya disediakan
-        if (waSettings.proxyUrl && waSettings.proxyUrl.trim() !== '') {
-            endpoint = waSettings.proxyUrl;
-            finalPayload = {
-                targetApiUrl: waSettings.apiUrl,
-                api_key: waSettings.apiKey,
-                sender: waSettings.senderNumber,
-                ...basePayload,
-            };
-        } else {
-            endpoint = waSettings.apiUrl;
-            finalPayload = {
-                api_key: waSettings.apiKey,
-                sender: waSettings.senderNumber,
-                ...basePayload,
-            };
-        }
+        const params = new URLSearchParams(finalPayload);
+        const finalUrl = `${endpoint.replace(/\/$/, '')}?${params.toString()}`;
 
         try {
-            const response = await fetch(endpoint, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(finalPayload)
+            const response = await fetch(finalUrl, {
+                method: 'GET',
             });
 
-            if (!response.ok) {
-                const errorBody = await response.text();
-                console.error(`Gagal mengirim notifikasi. Status: ${response.status}. Pesan: ${errorBody}`);
-                throw new Error(`Gagal mengirim pesan. Status: ${response.status}. Pesan dari server: ${errorBody}`);
+            // Even if the request is successful (e.g., status 200),
+            // the API might return a JSON with an error status.
+            // Some APIs might return non-JSON success responses, so we try to parse it,
+            // but if it fails, we still check the 'response.ok' status.
+            const responseData = await response.json().catch(() => {
+                // Return a placeholder if JSON parsing fails
+                return { status: response.ok, msg: 'Respons dari server bukan format JSON yang valid.' };
+            });
+
+            if (!response.ok || responseData.status !== true) {
+                const errorMessage = responseData.msg || JSON.stringify(responseData);
+                console.error(`Gagal mengirim notifikasi. Status: ${response.status}. Pesan: ${errorMessage}`);
+                throw new Error(`Gagal mengirim pesan. Status: ${response.status}. Pesan dari server: ${errorMessage}`);
             }
         } catch (error: any) {
             console.error('Error saat mengirim notifikasi:', error);
-            if (error.message.includes('Failed to fetch')) {
-                throw new Error('Gagal menghubungi server. Ini mungkin karena masalah CORS (jika tidak menggunakan proxy) atau URL Proxy/Endpoint salah.');
+            // Re-throw any error, including network errors like "Failed to fetch" (CORS),
+            // so the UI can accurately report the failure to the user.
+            if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+                 throw new Error('Gagal menghubungi server (kemungkinan besar karena masalah CORS). Jika Anda belum menggunakan proxy, sangat disarankan untuk membuatnya dan memasukkan URL proxy di pengaturan.');
             }
             throw new Error(error.message || 'Terjadi kesalahan saat menghubungi WhatsApp Gateway.');
         }
@@ -411,6 +413,8 @@ class MockApiService {
             console.log(`Notifikasi paket masuk untuk ${recipient.name} berhasil dikirim.`);
         } catch(error) {
             console.error('Gagal mengirim notifikasi paket masuk:', error);
+            // Re-throw the error to be caught by the UI layer (e.g., the modal)
+            throw error;
         }
     }
 
@@ -510,10 +514,18 @@ class MockApiService {
             payment_status: PaymentStatus.UNPAID,
             payment_link: paymentLink,
         };
+        
+        // Try sending notification, but don't block package creation if it fails
+        try {
+            await this.sendPackageArrivalNotification(newPackage);
+        } catch (error: any) {
+             // We re-throw the error so the UI can catch it and display it to the user.
+             // The package will still be added locally, but the user will know the notification failed.
+             throw new Error(`Paket berhasil ditambahkan, TAPI GAGAL mengirim notifikasi WA: ${error.message}`);
+        }
+        
         this.packages.push(newPackage);
         saveToStorage('packages', this.packages);
-        
-        await this.sendPackageArrivalNotification(newPackage);
 
         return newPackage;
     }
@@ -586,12 +598,20 @@ class MockApiService {
         await this.delay(300);
         const index = this.recipients.findIndex(r => r.id === recipientId);
         if (index === -1) throw new Error("Recipient not found");
+        
+        const wasJustActivated = !this.recipients[index].subscription_start_date && details.startDate;
+        
         this.recipients[index].subscription_start_date = details.startDate;
         this.recipients[index].subscription_end_date = details.endDate;
         this.recipients[index].subscription_notif_enabled = details.notifEnabled;
+        
         saveToStorage('recipients', this.recipients);
         
-        await this.sendSubscriptionActivationNotification(this.recipients[index]);
+        // Only send notification on brand new activation
+        if(wasJustActivated) {
+            await this.sendSubscriptionActivationNotification(this.recipients[index]);
+        }
+        
         return this.recipients[index];
     }
 

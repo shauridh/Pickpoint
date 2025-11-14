@@ -5,9 +5,8 @@ import { User, Recipient, Location as LocationType, UserRole, PricingScheme, Pic
 import { PlusCircle, Edit2, Trash2, Send } from 'lucide-react';
 
 interface WaSettings {
-    apiUrl: string;
+    notificationUrl: string;
     apiKey: string;
-    proxyUrl?: string;
     senderNumber: string;
     regularTemplate: string;
     subscriptionActivationTemplate: string;
@@ -17,9 +16,8 @@ interface WaSettings {
 }
 
 const defaultWaSettings: WaSettings = {
-    apiUrl: 'https://zapin.my.id/send-message',
+    notificationUrl: 'https://seen.getsender.id/send-message',
     apiKey: '',
-    proxyUrl: '',
     senderNumber: '',
     regularTemplate: 'HI {namaPenerima}, paket Anda dengan AWB {awb} dari {ekspedisi} sudah dapat diambil di pickpoint {lokasi}. Link pembayaran: {paymentLink}',
     subscriptionActivationTemplate: 'Halo {namaPenerima}, langganan Pickpoint Anda telah berhasil diaktifkan! Masa aktif Anda berlaku dari {tanggalMulai} hingga {tanggalBerakhir}. Nikmati kemudahan penitipan paket tanpa biaya harian.',
@@ -113,8 +111,10 @@ const SettingsPage = () => {
             setWaSettings(defaultWaSettings);
         }
 
-        if (!currentSettings.apiUrl || !currentSettings.apiKey || !currentSettings.senderNumber) {
-            setWaConfigError("Konfigurasi WhatsApp Gateway belum lengkap. Harap isi API Endpoint, API Key, dan Nomor Pengirim.");
+        const endpoint = currentSettings.notificationUrl;
+
+        if (!endpoint || !currentSettings.apiKey || !currentSettings.senderNumber) {
+            setWaConfigError("Konfigurasi WhatsApp Gateway belum lengkap. Harap isi semua kolom yang wajib diisi.");
         } else {
             setWaConfigError('');
         }
@@ -330,10 +330,11 @@ const SettingsPage = () => {
         e.preventDefault();
         localStorage.setItem('waSettings', JSON.stringify(waSettings));
         setFormStatus({ wa: { message: 'Pengaturan WhatsApp berhasil disimpan!', type: 'success' } });
-        if (waSettings.apiUrl && waSettings.apiKey && waSettings.senderNumber) {
-            setWaConfigError('');
+        const endpoint = waSettings.notificationUrl;
+        if (!endpoint || !waSettings.apiKey || !waSettings.senderNumber) {
+            setWaConfigError("Konfigurasi WhatsApp Gateway belum lengkap. Harap isi semua kolom yang wajib diisi.");
         } else {
-            setWaConfigError("Konfigurasi WhatsApp Gateway belum lengkap. Harap isi API Endpoint, API Key, dan Nomor Pengirim.");
+            setWaConfigError('');
         }
     };
 
@@ -679,25 +680,27 @@ const SettingsPage = () => {
                          <div className="p-4 border-b"><h3 className="text-lg font-bold">Konfigurasi WhatsApp Gateway</h3></div>
                          <form onSubmit={handleWaSettingsSubmit} className="p-4 space-y-6">
                              <div className="bg-blue-50 border-l-4 border-blue-400 text-blue-800 p-4 rounded-md" role="alert">
-                                <h3 className="font-bold">Solusi untuk Error "Failed to Fetch" (CORS)</h3>
-                                <p className="text-sm mt-1">Jika Anda mengalami error saat mengirim notifikasi, kemungkinan besar disebabkan oleh pembatasan CORS dari server API WhatsApp.</p>
-                                <ul className="list-disc list-inside text-sm mt-2 space-y-1">
-                                    <li><strong>Cara Mengatasi:</strong> Gunakan "CORS Proxy URL". Proxy ini bertindak sebagai perantara yang aman antara aplikasi Anda dan API WhatsApp.</li>
-                                    <li><strong>Keuntungan:</strong> Menghilangkan error CORS dan menyembunyikan API Key Anda dari browser, sehingga lebih aman.</li>
-                                    <li><strong>Tanpa Proxy:</strong> Panggilan akan dilakukan langsung dari browser, yang dapat menyebabkan error CORS dan mengekspos API Key Anda.</li>
-                                </ul>
-                                <p className="text-sm mt-2">Untuk production, penggunaan proxy sangat direkomendasikan.</p>
+                                <h3 className="font-bold">Mengatasi Error "Failed to fetch" (CORS) dengan Mudah</h3>
+                                <p className="text-sm mt-2">
+                                    Aplikasi ini akan mengirim notifikasi ke URL apa pun yang Anda masukkan di bawah. Error "Failed to fetch" terjadi karena browser memblokir permintaan langsung ke API pihak ketiga karena alasan keamanan (CORS).
+                                </p>
+                                <ol className="list-decimal list-inside text-sm mt-2 space-y-1">
+                                    <li>
+                                        <strong>Jika API Anda mendukung CORS:</strong><br/>
+                                        Cukup masukkan URL API asli Anda (misal: <code className="text-xs">https://api-wa.com/send</code>) di kolom di bawah.
+                                    </li>
+                                    <li>
+                                        <strong>Jika Anda mengalami error "Failed to fetch" (Sangat Umum):</strong><br/>
+                                        Anda harus menggunakan server perantara (proxy). Buat proxy sederhana (misalnya gratis di Vercel/Cloud Run), lalu masukkan **URL proxy Anda** (misal: <code className="text-xs">https://proxy-saya.vercel.app/api</code>) di kolom di bawah. Ini adalah metode yang paling andal.
+                                    </li>
+                                </ol>
+                                <p className="text-sm mt-2 font-semibold">Menggunakan proxy adalah solusi yang direkomendasikan untuk menyelesaikan masalah CORS secara permanen.</p>
                             </div>
                             {renderFormStatus('wa')}
                             <div className="space-y-4">
                                 <div>
-                                    <label htmlFor="apiUrl" className="block text-sm font-medium text-gray-700">API Endpoint</label>
-                                    <input id="apiUrl" type="url" value={waSettings.apiUrl} onChange={(e) => handleWaSettingsChange('apiUrl', e.target.value)} required className={inputClasses} placeholder="https://zapin.my.id/send-message" />
-                                </div>
-                                <div>
-                                    <label htmlFor="proxyUrl" className="block text-sm font-medium text-gray-700">CORS Proxy URL <span className="text-gray-400 font-normal">(Opsional)</span></label>
-                                    <input id="proxyUrl" type="url" value={waSettings.proxyUrl || ''} onChange={(e) => handleWaSettingsChange('proxyUrl', e.target.value)} className={inputClasses} placeholder="e.g. https://your-proxy-function.com" />
-                                    <p className="mt-1 text-xs text-gray-500">Isi ini untuk mengatasi error CORS dan mengamankan API Key Anda.</p>
+                                    <label htmlFor="notificationUrl" className="block text-sm font-medium text-gray-700">URL Pengiriman Notifikasi</label>
+                                    <input id="notificationUrl" type="url" value={waSettings.notificationUrl} onChange={(e) => handleWaSettingsChange('notificationUrl', e.target.value)} required className={inputClasses} placeholder="https://api-anda.com/send ATAU https://proxy-anda.com/api" />
                                 </div>
                                  <div>
                                     <label htmlFor="apiKey" className="block text-sm font-medium text-gray-700">API Key</label>

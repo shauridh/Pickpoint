@@ -126,7 +126,13 @@ const AddPackageModal: React.FC<AddPackageModalProps> = ({ isOpen, onClose, onSu
                 handleClose();
             }, 1500);
         } catch (err: any) {
-            setError(err.message || 'Gagal menambahkan paket.');
+            const errorMessage = err.message || 'Gagal menambahkan paket.';
+            setError(errorMessage);
+            // If the error message indicates the package was added despite a notification failure,
+            // we must still call onSuccess() to refresh the package list on the dashboard.
+            if (errorMessage.startsWith('Paket berhasil ditambahkan, TAPI GAGAL')) {
+                onSuccess();
+            }
         } finally {
             setSubmitting(false);
         }

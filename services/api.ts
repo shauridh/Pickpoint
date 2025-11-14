@@ -515,17 +515,22 @@ class MockApiService {
             payment_link: paymentLink,
         };
         
-        // Try sending notification, but don't block package creation if it fails
+        let notificationError: string | null = null;
         try {
             await this.sendPackageArrivalNotification(newPackage);
         } catch (error: any) {
-             // We re-throw the error so the UI can catch it and display it to the user.
-             // The package will still be added locally, but the user will know the notification failed.
-             throw new Error(`Paket berhasil ditambahkan, TAPI GAGAL mengirim notifikasi WA: ${error.message}`);
+            // Capture the error message, but DON'T throw yet.
+            notificationError = error.message;
         }
         
+        // ALWAYS add the package to the list and save it.
         this.packages.push(newPackage);
         saveToStorage('packages', this.packages);
+
+        // NOW, if there was a notification error, throw the composite error message.
+        if (notificationError) {
+            throw new Error(`Paket berhasil ditambahkan, TAPI GAGAL mengirim notifikasi WA: ${notificationError}`);
+        }
 
         return newPackage;
     }

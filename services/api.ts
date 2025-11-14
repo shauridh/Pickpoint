@@ -7,6 +7,7 @@ interface WaSettings {
     apiUrl: string;
     apiKey: string;
     senderNumber: string;
+    proxyUrl?: string; // Added for CORS proxy
     regularTemplate: string;
     subscriptionActivationTemplate: string;
     subscriptionReminderTemplate: string;
@@ -149,7 +150,7 @@ class MockApiService {
         await this.delay(500);
 
         const locationPackages = this.packages.filter(p => !location_id || p.location_id === location_id);
-        const locationRecipients = this.recipients.filter(r => !location_id || r.location_id === location_id);
+        const locationRecipients = this.recipients.filter(r => !location_id || r.location_id === r.location_id);
 
         const now = new Date();
         let startDate: Date;
@@ -362,9 +363,23 @@ class MockApiService {
             message: message,
         };
     
-        console.log('--- SIMULASI NOTIFIKASI PAKET MASUK ---');
-        console.log('Payload:', JSON.stringify(payload, null, 2));
-        console.log('------------------------------------');
+        const endpoint = waSettings.proxyUrl ? `${waSettings.proxyUrl.replace(/\/$/, '')}/${waSettings.apiUrl}` : waSettings.apiUrl;
+        
+        try {
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (response.ok) {
+                console.log(`Notifikasi paket masuk untuk ${recipient.name} berhasil dikirim.`);
+            } else {
+                const errorBody = await response.text();
+                console.error(`Gagal mengirim notifikasi paket masuk. Status: ${response.status}. Pesan: ${errorBody}`);
+            }
+        } catch (error) {
+            console.error('Error saat mengirim notifikasi paket masuk:', error);
+        }
     }
 
      async sendSubscriptionActivationNotification(recipient: Recipient) {
@@ -393,9 +408,23 @@ class MockApiService {
             message: message,
         };
     
-        console.log('--- SIMULASI NOTIFIKASI AKTIVASI LANGGANAN ---');
-        console.log('Payload:', JSON.stringify(payload, null, 2));
-        console.log('-------------------------------------------');
+        const endpoint = waSettings.proxyUrl ? `${waSettings.proxyUrl.replace(/\/$/, '')}/${waSettings.apiUrl}` : waSettings.apiUrl;
+
+        try {
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (response.ok) {
+                console.log(`Notifikasi aktivasi langganan untuk ${recipient.name} berhasil dikirim.`);
+            } else {
+                const errorBody = await response.text();
+                console.error(`Gagal mengirim notifikasi aktivasi. Status: ${response.status}. Pesan: ${errorBody}`);
+            }
+        } catch (error) {
+            console.error('Error saat mengirim notifikasi aktivasi:', error);
+        }
     }
 
     // In a real app, this would be triggered by a cron job
@@ -430,9 +459,23 @@ class MockApiService {
             message: message,
         };
     
-        console.log('--- SIMULASI NOTIFIKASI PENGINGAT LANGGANAN ---');
-        console.log('Payload:', JSON.stringify(payload, null, 2));
-        console.log('---------------------------------------------');
+        const endpoint = waSettings.proxyUrl ? `${waSettings.proxyUrl.replace(/\/$/, '')}/${waSettings.apiUrl}` : waSettings.apiUrl;
+
+        try {
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (response.ok) {
+                console.log(`Notifikasi pengingat langganan untuk ${recipient.name} berhasil dikirim.`);
+            } else {
+                const errorBody = await response.text();
+                console.error(`Gagal mengirim notifikasi pengingat. Status: ${response.status}. Pesan: ${errorBody}`);
+            }
+        } catch (error) {
+            console.error('Error saat mengirim notifikasi pengingat:', error);
+        }
     }
 
     async sendTestNotification(phoneNumber: string) {
@@ -452,11 +495,28 @@ class MockApiService {
             message: message,
         };
     
-        console.log('--- SIMULASI NOTIFIKASI TES ---');
-        console.log('Payload:', JSON.stringify(payload, null, 2));
-        console.log('-------------------------------');
+        const endpoint = waSettings.proxyUrl ? `${waSettings.proxyUrl.replace(/\/$/, '')}/${waSettings.apiUrl}` : waSettings.apiUrl;
 
-        return { success: true, message: `Pesan tes berhasil dikirim ke ${phoneNumber}`};
+        try {
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+    
+            if (!response.ok) {
+                const errorBody = await response.text();
+                throw new Error(`Gagal mengirim pesan. Status: ${response.status}. Pesan dari server: ${errorBody}`);
+            }
+            
+            await response.json();
+            
+            return { success: true, message: `Pesan tes berhasil dikirim ke ${phoneNumber}`};
+    
+        } catch (error: any) {
+            console.error('Error sending test notification:', error);
+            throw new Error(error.message || 'Terjadi kesalahan saat menghubungi WhatsApp Gateway. Pastikan URL Proxy (jika ada) dan Endpoint sudah benar.');
+        }
     }
 
     async addPackage(newPackageData: AddPackagePayload) {

@@ -8,6 +8,7 @@ interface WaSettings {
     apiUrl: string;
     apiKey: string;
     senderNumber: string;
+    proxyUrl: string; // Added for CORS proxy
     regularTemplate: string;
     subscriptionActivationTemplate: string;
     subscriptionReminderTemplate: string;
@@ -19,6 +20,7 @@ const defaultWaSettings: WaSettings = {
     apiUrl: 'https://zapin.my.id/send-message',
     apiKey: '',
     senderNumber: '',
+    proxyUrl: '',
     regularTemplate: 'HI {namaPenerima}, paket Anda dengan AWB {awb} dari {ekspedisi} sudah dapat diambil di pickpoint {lokasi}. Link pembayaran: {paymentLink}',
     subscriptionActivationTemplate: 'Halo {namaPenerima}, langganan Pickpoint Anda telah berhasil diaktifkan! Masa aktif Anda berlaku dari {tanggalMulai} hingga {tanggalBerakhir}. Nikmati kemudahan penitipan paket tanpa biaya harian.',
     subscriptionReminderTemplate: 'Langganan Pickpoint Anda akan berakhir pada {tanggalBerakhir} ({sisaHari} hari lagi). Segera perpanjang untuk tetap menikmati keuntungan sebagai pelanggan setia. Klik di sini: {linkPerpanjang}',
@@ -71,6 +73,7 @@ const SettingsPage = () => {
     // State for WA Test
     const [testPhoneNumber, setTestPhoneNumber] = useState('');
     const [isSendingTest, setIsSendingTest] = useState(false);
+    const [waConfigError, setWaConfigError] = useState('');
 
 
     // State for editing items
@@ -102,10 +105,18 @@ const SettingsPage = () => {
     useEffect(() => {
         fetchData();
         const storedWaSettings = localStorage.getItem('waSettings');
+        let currentSettings = defaultWaSettings;
         if (storedWaSettings) {
-             setWaSettings({ ...defaultWaSettings, ...JSON.parse(storedWaSettings) });
+             currentSettings = { ...defaultWaSettings, ...JSON.parse(storedWaSettings) };
+             setWaSettings(currentSettings);
         } else {
             setWaSettings(defaultWaSettings);
+        }
+
+        if (!currentSettings.apiUrl || !currentSettings.apiKey || !currentSettings.senderNumber) {
+            setWaConfigError("Konfigurasi WhatsApp Gateway belum lengkap. Harap isi API Endpoint, API Key, dan Nomor Pengirim.");
+        } else {
+            setWaConfigError('');
         }
     }, [fetchData]);
 
@@ -319,6 +330,11 @@ const SettingsPage = () => {
         e.preventDefault();
         localStorage.setItem('waSettings', JSON.stringify(waSettings));
         setFormStatus({ wa: { message: 'Pengaturan WhatsApp berhasil disimpan!', type: 'success' } });
+        if (waSettings.apiUrl && waSettings.apiKey && waSettings.senderNumber) {
+            setWaConfigError('');
+        } else {
+            setWaConfigError("Konfigurasi WhatsApp Gateway belum lengkap. Harap isi API Endpoint, API Key, dan Nomor Pengirim.");
+        }
     };
 
     const handleSendTestNotification = async (e: React.FormEvent) => {
@@ -654,11 +670,16 @@ const SettingsPage = () => {
 
             {activeTab === 'integrations' && user?.role === UserRole.ADMIN && (
                 <div className="space-y-6">
+                    {waConfigError && (
+                        <div className="p-4 text-sm text-red-800 bg-red-100 rounded-lg" role="alert">
+                            <span className="font-medium">Perhatian!</span> {waConfigError}
+                        </div>
+                    )}
                     <div className="bg-white rounded-lg shadow-md max-w-3xl">
                          <div className="p-4 border-b"><h3 className="text-lg font-bold">Konfigurasi WhatsApp Gateway</h3></div>
                          <form onSubmit={handleWaSettingsSubmit} className="p-4 space-y-6">
                             {renderFormStatus('wa')}
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="space-y-4">
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700">API Endpoint</label>
                                     <input type="url" value={waSettings.apiUrl} onChange={(e) => handleWaSettingsChange('apiUrl', e.target.value)} required className={inputClasses} placeholder="https://zapin.my.id/send-message" />
@@ -670,6 +691,11 @@ const SettingsPage = () => {
                                  <div>
                                     <label className="block text-sm font-medium text-gray-700">Nomor Pengirim</label>
                                     <input type="text" value={waSettings.senderNumber} onChange={(e) => handleWaSettingsChange('senderNumber', e.target.value)} required className={inputClasses} placeholder="628xxxxxxxxxx" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">CORS Proxy URL (Opsional)</label>
+                                    <input type="url" value={waSettings.proxyUrl} onChange={(e) => handleWaSettingsChange('proxyUrl', e.target.value)} className={inputClasses} placeholder="https://your-proxy-url.com/" />
+                                    <p className="mt-1 text-xs text-gray-500">Isi jika Anda menggunakan proxy untuk mengatasi masalah CORS dan mengamankan API Key.</p>
                                 </div>
                             </div>
                             

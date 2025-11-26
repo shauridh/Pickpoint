@@ -37,7 +37,6 @@ const Packages: React.FC = () => {
   const filteredPackages = useMemo(() => {
     return packages.filter(pkg => {
       const customer = customers.find(c => c.id === pkg.customerId);
-      const location = locations.find(l => l.id === pkg.locationId);
       
       const matchesSearch = 
         pkg.trackingNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||

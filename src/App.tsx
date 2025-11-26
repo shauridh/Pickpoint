@@ -9,6 +9,12 @@ import Layout from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Customers from './pages/Customers';
+import Locations from './pages/Locations';
+import Packages from './pages/Packages';
+import Users from './pages/Users';
+import Reports from './pages/Reports';
+import Settings from './pages/Settings';
+import PublicPackageDetail from './pages/PublicPackageDetail';
 
 // Initialize default data on first load
 initializeDefaultData();
@@ -18,6 +24,9 @@ const App: React.FC = () => {
     <BrowserRouter>
       <AuthProvider>
         <Routes>
+          {/* Public Route - No Auth Required */}
+          <Route path="/p/:trackingNumber/:pickupCode" element={<PublicPackageDetail />} />
+          
           <Route path="/login" element={<Login />} />
           
           <Route
@@ -43,14 +52,22 @@ const App: React.FC = () => {
           />
           
           <Route
+            path="/packages"
+            element={
+              <ProtectedRoute>
+                <Layout>
+                  <Packages />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          
+          <Route
             path="/locations"
             element={
               <ProtectedRoute adminOnly>
                 <Layout>
-                  <div className="text-center py-12">
-                    <h2 className="text-2xl font-bold text-gray-900 mb-4">Location Management</h2>
-                    <p className="text-gray-600">Coming soon...</p>
-                  </div>
+                  <Locations />
                 </Layout>
               </ProtectedRoute>
             }
@@ -61,10 +78,7 @@ const App: React.FC = () => {
             element={
               <ProtectedRoute adminOnly>
                 <Layout>
-                  <div className="text-center py-12">
-                    <h2 className="text-2xl font-bold text-gray-900 mb-4">User Management</h2>
-                    <p className="text-gray-600">Coming soon...</p>
-                  </div>
+                  <Users />
                 </Layout>
               </ProtectedRoute>
             }
@@ -75,10 +89,7 @@ const App: React.FC = () => {
             element={
               <ProtectedRoute>
                 <Layout>
-                  <div className="text-center py-12">
-                    <h2 className="text-2xl font-bold text-gray-900 mb-4">Reports</h2>
-                    <p className="text-gray-600">Coming soon...</p>
-                  </div>
+                  <Reports />
                 </Layout>
               </ProtectedRoute>
             }
@@ -89,10 +100,7 @@ const App: React.FC = () => {
             element={
               <ProtectedRoute adminOnly>
                 <Layout>
-                  <div className="text-center py-12">
-                    <h2 className="text-2xl font-bold text-gray-900 mb-4">Settings</h2>
-                    <p className="text-gray-600">Coming soon...</p>
-                  </div>
+                  <Settings />
                 </Layout>
               </ProtectedRoute>
             }

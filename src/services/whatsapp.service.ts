@@ -60,6 +60,14 @@ export const sendWhatsAppMessage = async (
   }
 };
 
+export const generatePackageDetailUrl = (
+  trackingNumber: string,
+  pickupCode: string
+): string => {
+  const baseUrl = window.location.origin;
+  return `${baseUrl}/p/${trackingNumber}/${pickupCode}`;
+};
+
 export const sendPackageArrivalNotification = async (
   customerName: string,
   customerPhone: string,
@@ -73,9 +81,24 @@ export const sendPackageArrivalNotification = async (
     return false;
   }
 
-  const message = settings.language === 'id'
-    ? `Halo ${customerName},\n\nPaket Anda dengan nomor resi ${trackingNumber} telah tiba di ${locationName}.\n\nKode Pengambilan: *${pickupCode}*\n\nSilakan ambil paket Anda sesegera mungkin.\n\nTerima kasih,\n${settings.companyName}`
-    : `Hello ${customerName},\n\nYour package with tracking number ${trackingNumber} has arrived at ${locationName}.\n\nPickup Code: *${pickupCode}*\n\nPlease collect your package as soon as possible.\n\nThank you,\n${settings.companyName}`;
+  // Generate public package detail link
+  const packageLink = generatePackageDetailUrl(trackingNumber, pickupCode);
+
+  // Use template from settings if available
+  let message: string;
+  if (settings.notificationTemplates?.packageArrival) {
+    message = settings.notificationTemplates.packageArrival
+      .replace('{name}', customerName)
+      .replace('{tracking}', trackingNumber)
+      .replace('{pickup_code}', pickupCode)
+      .replace('{location}', locationName)
+      .replace('{link}', packageLink);
+  } else {
+    // Fallback to default message
+    message = settings.language === 'id'
+      ? `Halo ${customerName},\n\nPaket Anda dengan nomor resi ${trackingNumber} telah tiba di ${locationName}.\n\nKode Pengambilan: *${pickupCode}*\n\nLihat detail: ${packageLink}\n\nTerima kasih,\n${settings.companyName}`
+      : `Hello ${customerName},\n\nYour package with tracking number ${trackingNumber} has arrived at ${locationName}.\n\nPickup Code: *${pickupCode}*\n\nView details: ${packageLink}\n\nThank you,\n${settings.companyName}`;
+  }
 
   return sendWhatsAppMessage(customerPhone, message);
 };
@@ -92,9 +115,19 @@ export const sendMembershipActivationNotification = async (
     return false;
   }
 
-  const message = settings.language === 'id'
-    ? `Halo ${customerName},\n\nSelamat! Keanggotaan Premium Anda telah diaktifkan.\n\nPeriode: ${new Date(startDate).toLocaleDateString('id-ID')} - ${new Date(endDate).toLocaleDateString('id-ID')}\n\nNikmati diskon khusus untuk setiap paket!\n\nTerima kasih,\n${settings.companyName}`
-    : `Hello ${customerName},\n\nCongratulations! Your Premium Membership has been activated.\n\nPeriod: ${new Date(startDate).toLocaleDateString('en-US')} - ${new Date(endDate).toLocaleDateString('en-US')}\n\nEnjoy special discounts on all packages!\n\nThank you,\n${settings.companyName}`;
+  // Use template from settings if available
+  let message: string;
+  if (settings.notificationTemplates?.membership) {
+    message = settings.notificationTemplates.membership
+      .replace('{name}', customerName)
+      .replace('{start_date}', new Date(startDate).toLocaleDateString('id-ID'))
+      .replace('{end_date}', new Date(endDate).toLocaleDateString('id-ID'));
+  } else {
+    // Fallback to default message
+    message = settings.language === 'id'
+      ? `Halo ${customerName},\n\nSelamat! Keanggotaan Premium Anda telah diaktifkan.\n\nPeriode: ${new Date(startDate).toLocaleDateString('id-ID')} - ${new Date(endDate).toLocaleDateString('id-ID')}\n\nNikmati diskon khusus untuk setiap paket!\n\nTerima kasih,\n${settings.companyName}`
+      : `Hello ${customerName},\n\nCongratulations! Your Premium Membership has been activated.\n\nPeriod: ${new Date(startDate).toLocaleDateString('en-US')} - ${new Date(endDate).toLocaleDateString('en-US')}\n\nEnjoy special discounts on all packages!\n\nThank you,\n${settings.companyName}`;
+  }
 
   return sendWhatsAppMessage(customerPhone, message);
 };
@@ -112,9 +145,24 @@ export const sendPickupReminderNotification = async (
     return false;
   }
 
-  const message = settings.language === 'id'
-    ? `Halo ${customerName},\n\nIni adalah pengingat bahwa paket Anda (${trackingNumber}) telah menunggu selama ${daysWaiting} hari.\n\nKode Pengambilan: *${pickupCode}*\n\nMohon segera ambil paket Anda.\n\nTerima kasih,\n${settings.companyName}`
-    : `Hello ${customerName},\n\nThis is a reminder that your package (${trackingNumber}) has been waiting for ${daysWaiting} days.\n\nPickup Code: *${pickupCode}*\n\nPlease collect your package soon.\n\nThank you,\n${settings.companyName}`;
+  // Generate public package detail link
+  const packageLink = generatePackageDetailUrl(trackingNumber, pickupCode);
+
+  // Use template from settings if available
+  let message: string;
+  if (settings.notificationTemplates?.membershipReminder) {
+    message = settings.notificationTemplates.membershipReminder
+      .replace('{name}', customerName)
+      .replace('{tracking}', trackingNumber)
+      .replace('{pickup_code}', pickupCode)
+      .replace('{days}', daysWaiting.toString())
+      .replace('{link}', packageLink);
+  } else {
+    // Fallback to default message
+    message = settings.language === 'id'
+      ? `Halo ${customerName},\n\nIni adalah pengingat bahwa paket Anda (${trackingNumber}) telah menunggu selama ${daysWaiting} hari.\n\nKode Pengambilan: *${pickupCode}*\n\nLihat detail: ${packageLink}\n\nMohon segera ambil paket Anda.\n\nTerima kasih,\n${settings.companyName}`
+      : `Hello ${customerName},\n\nThis is a reminder that your package (${trackingNumber}) has been waiting for ${daysWaiting} days.\n\nPickup Code: *${pickupCode}*\n\nView details: ${packageLink}\n\nPlease collect your package soon.\n\nThank you,\n${settings.companyName}`;
+  }
 
   return sendWhatsAppMessage(customerPhone, message);
 };

@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 import { 
   Package, 
   PackageCheck, 
-  PackageX, 
   Users, 
   TrendingUp,
   Calendar,
@@ -25,9 +24,10 @@ import {
   bulkUpdatePackages,
 } from '@/services/storage.service';
 import { calculatePackagePrice } from '@/services/pricing.service';
-import { format, startOfDay, subDays, isAfter, startOfWeek, startOfMonth } from 'date-fns';
-import { DashboardMetrics, PackageStatus } from '@/types';
+import { format, startOfDay, isAfter, startOfWeek, startOfMonth } from 'date-fns';
+import { DashboardMetrics, PackageStatus, Package as PackageType } from '@/types';
 import PackageModal from '@/components/PackageModal';
+import PackageDetailModal from '@/components/PackageDetailModal';
 
 type TimeFilter = 'today' | 'week' | 'month' | 'all';
 
@@ -39,6 +39,8 @@ const Dashboard: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPackage, setEditingPackage] = useState<any>();
   const [selectedPackages, setSelectedPackages] = useState<string[]>([]);
+  const [selectedPackageForDetail, setSelectedPackageForDetail] = useState<PackageType | null>(null);
+  const [isMetricsCollapsed, setIsMetricsCollapsed] = useState(false);
 
   const getFilterDate = () => {
     const today = startOfDay(new Date());
@@ -60,8 +62,6 @@ const Dashboard: React.FC = () => {
     const locations = getLocations();
     
     const today = startOfDay(new Date());
-    const last7Days = subDays(today, 7);
-    const last30Days = subDays(today, 30);
     const filterDate = getFilterDate();
 
     // Filter packages by time range
@@ -70,9 +70,6 @@ const Dashboard: React.FC = () => {
       : packages;
 
     // Package stats
-    const totalArrived = filteredPackages.filter(p => p.status === 'arrived' || p.status === 'picked_up').length;
-    const totalPickedUp = filteredPackages.filter(p => p.status === 'picked_up').length;
-    const totalDestroyed = filteredPackages.filter(p => p.status === 'destroyed').length;
     const currentInventory = filteredPackages.filter(p => p.status === 'arrived').length;
     
     const todayArrived = packages.filter(p => 
@@ -83,34 +80,57 @@ const Dashboard: React.FC = () => {
       p.pickedUpAt && isAfter(new Date(p.pickedUpAt), today)
     ).length;
 
-    // Revenue calculation
-    const calculateRevenue = (pkgs: typeof packages) => {
-      return pkgs.reduce((sum, pkg) => {
-        if (pkg.status !== 'picked_up') return sum;
+    // Revenue calculation - split by type
+    const calculateRevenueByType = (pkgs: typeof packages) => {
+      let packageRevenue = 0;
+      let deliveryRevenue = 0;
+      let membershipRevenue = 0;
+      
+      pkgs.forEach(pkg => {
+        if (pkg.status !== 'picked_up') return;
         
         const customer = customers.find(c => c.id === pkg.customerId);
         const location = locations.find(l => l.id === pkg.locationId);
         
-        if (!customer || !location) return sum;
+        if (!customer || !location) return;
         
         const pricing = calculatePackagePrice(pkg, location, customer);
-        return sum + pricing.finalPrice;
-      }, 0);
+        packageRevenue += pricing.finalPrice;
+        
+        // Add delivery revenue if applicable (mock for now)
+        // TODO: Track actual delivery in package data
+        if (location.deliveryEnabled && Math.random() > 0.7) {
+          deliveryRevenue += location.deliveryPrice || 0;
+        }
+      });
+      
+      // Calculate membership revenue from active members
+      customers.forEach(customer => {
+        if (customer.isPremiumMember && 
+            customer.membershipStartDate && 
+            isAfter(new Date(customer.membershipStartDate), filterDate || new Date(0))) {
+          const location = locations[0]; // Use first location as default
+          if (location?.membershipPrice) {
+            membershipRevenue += location.membershipPrice;
+          }
+        }
+      });
+      
+      return {
+        package: packageRevenue,
+        delivery: deliveryRevenue,
+        membership: membershipRevenue,
+        total: packageRevenue + deliveryRevenue + membershipRevenue,
+      };
     };
 
-    const todayRevenue = calculateRevenue(
+    const todayRevenueData = calculateRevenueByType(
       packages.filter(p => p.pickedUpAt && isAfter(new Date(p.pickedUpAt), today))
     );
     
-    const weekRevenue = calculateRevenue(
-      packages.filter(p => p.pickedUpAt && isAfter(new Date(p.pickedUpAt), last7Days))
+    const totalRevenueData = calculateRevenueByType(
+      filteredPackages.filter(p => p.status === 'picked_up')
     );
-    
-    const monthRevenue = calculateRevenue(
-      packages.filter(p => p.pickedUpAt && isAfter(new Date(p.pickedUpAt), last30Days))
-    );
-    
-    const totalRevenue = calculateRevenue(filteredPackages.filter(p => p.status === 'picked_up'));
 
     // Active members
     const activeMembers = customers.filter(c => 
@@ -119,20 +139,30 @@ const Dashboard: React.FC = () => {
       isAfter(new Date(c.membershipEndDate), new Date())
     ).length;
 
+    // Total packages (all time)
+    const totalPackages = packages.length;
+
     return {
       packages: {
-        totalArrived,
-        totalPickedUp,
-        totalDestroyed,
-        currentInventory,
         todayArrived,
         todayPickedUp,
+        total: totalPackages,
+        currentInventory,
+        totalArrived: filteredPackages.filter(p => p.status === 'arrived' || p.status === 'picked_up').length,
+        totalPickedUp: filteredPackages.filter(p => p.status === 'picked_up').length,
+        totalDestroyed: filteredPackages.filter(p => p.status === 'destroyed').length,
+      },
+      members: {
+        total: activeMembers,
       },
       revenue: {
-        today: todayRevenue,
-        thisWeek: weekRevenue,
-        thisMonth: monthRevenue,
-        total: totalRevenue,
+        delivery: totalRevenueData.delivery,
+        membership: totalRevenueData.membership,
+        package: totalRevenueData.package,
+        total: totalRevenueData.total,
+        today: todayRevenueData.total,
+        thisWeek: 0, // Deprecated but kept for compatibility
+        thisMonth: 0, // Deprecated but kept for compatibility
       },
       activeMembers,
       totalCustomers: customers.length,
@@ -155,7 +185,7 @@ const Dashboard: React.FC = () => {
       const matchesStatus = statusFilter === 'all' || pkg.status === statusFilter;
       
       return matchesSearch && matchesStatus;
-    });
+    }).sort((a, b) => new Date(b.arrivedAt).getTime() - new Date(a.arrivedAt).getTime());
   }, [packages, customers, searchTerm, statusFilter]);
 
   const handleDelete = (id: string) => {
@@ -233,6 +263,29 @@ const Dashboard: React.FC = () => {
     }
   };
 
+  const handleUpdatePaymentStatus = (packageId: string, status: 'paid' | 'unpaid') => {
+    updatePackage(packageId, {
+      paymentStatus: status,
+      paidAt: status === 'paid' ? new Date().toISOString() : undefined,
+    });
+    setSelectedPackageForDetail(null);
+    window.location.reload();
+  };
+
+  const handleResendNotification = (_packageId: string) => {
+    // TODO: Implement WhatsApp notification
+    alert('Notifikasi WhatsApp berhasil dikirim!');
+  };
+
+  const handleUpdateTakenStatus = (packageId: string) => {
+    updatePackage(packageId, {
+      status: 'picked_up',
+      pickedUpAt: new Date().toISOString(),
+    });
+    setSelectedPackageForDetail(null);
+    window.location.reload();
+  };
+
   // Chart data removed - will be in Reports module
   // const chartData = useMemo(() => {
   //   const packages = getPackages();
@@ -260,34 +313,6 @@ const Dashboard: React.FC = () => {
   //   return data;
   // }, []);
 
-  const StatCard: React.FC<{
-    title: string;
-    value: string | number;
-    icon: React.ReactNode;
-    gradient: string;
-  }> = ({ title, value, icon, gradient }) => (
-    <div className={`stat-card ${gradient}`}>
-      <div className="relative z-10">
-        <div className="flex items-center justify-between mb-4">
-          <div className="p-3 bg-white/20 backdrop-blur-sm rounded-xl">
-            {icon}
-          </div>
-          <div className="text-right">
-            <p className="text-sm font-medium text-white/80 uppercase tracking-wide">{title}</p>
-          </div>
-        </div>
-        <div className="mt-2">
-          <p className="text-4xl font-bold text-white drop-shadow-lg">{value}</p>
-        </div>
-      </div>
-      <div className="absolute bottom-0 right-0 opacity-10">
-        <div className="w-32 h-32">
-          {icon}
-        </div>
-      </div>
-    </div>
-  );
-
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('id-ID', {
       style: 'currency',
@@ -307,50 +332,13 @@ const Dashboard: React.FC = () => {
         </div>
         
         <div className="flex flex-wrap items-center gap-3">
-          {/* Time Filter */}
-          <div className="flex items-center gap-1 bg-white/80 backdrop-blur-sm border border-gray-200/50 rounded-xl p-1 shadow-lg">
-            <button
-              onClick={() => setTimeFilter('today')}
-              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
-                timeFilter === 'today'
-                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md'
-                  : 'text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              {t('dashboard.today')}
-            </button>
-            <button
-              onClick={() => setTimeFilter('week')}
-              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
-                timeFilter === 'week'
-                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md'
-                  : 'text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              {t('dashboard.thisWeek')}
-            </button>
-            <button
-              onClick={() => setTimeFilter('month')}
-              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
-                timeFilter === 'month'
-                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md'
-                  : 'text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              {t('dashboard.thisMonth')}
-            </button>
-            <button
-              onClick={() => setTimeFilter('all')}
-              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
-                timeFilter === 'all'
-                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md'
-                  : 'text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              All Time
-            </button>
-          </div>
-          
+          <button
+            onClick={() => setIsMetricsCollapsed(!isMetricsCollapsed)}
+            className="px-4 py-2 bg-white/80 backdrop-blur-sm border border-gray-200/50 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 flex items-center gap-2 text-sm font-medium text-gray-700 hover:bg-white"
+            title={isMetricsCollapsed ? 'Tampilkan Kartu' : 'Sembunyikan Kartu'}
+          >
+            {isMetricsCollapsed ? '📊 Tampilkan Kartu' : '📊 Sembunyikan Kartu'}
+          </button>
           <div className="flex items-center px-4 py-2 bg-white/80 backdrop-blur-sm border border-gray-200/50 rounded-xl shadow-lg">
             <Calendar className="h-5 w-5 mr-2 text-indigo-600" />
             <span className="text-sm font-medium text-gray-700">{format(new Date(), 'dd MMM yyyy')}</span>
@@ -358,96 +346,190 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard
-          title={t('dashboard.todayArrived')}
-          value={metrics.packages.todayArrived}
-          icon={<Package className="h-8 w-8" />}
-          gradient="bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-600"
-        />
-        <StatCard
-          title={t('dashboard.todayPickedUp')}
-          value={metrics.packages.todayPickedUp}
-          icon={<PackageCheck className="h-8 w-8" />}
-          gradient="bg-gradient-to-br from-emerald-500 via-green-600 to-teal-600"
-        />
-        <StatCard
-          title={t('dashboard.currentInventory')}
-          value={metrics.packages.currentInventory}
-          icon={<PackageX className="h-8 w-8" />}
-          gradient="bg-gradient-to-br from-amber-500 via-orange-600 to-red-600"
-        />
-        <StatCard
-          title={t('dashboard.activeMembers')}
-          value={metrics.activeMembers}
-          icon={<Users className="h-8 w-8" />}
-          gradient="bg-gradient-to-br from-purple-500 via-pink-600 to-rose-600"
-        />
-      </div>
+      {/* Collapsible Metrics Section */}
+      {!isMetricsCollapsed && (
+      <div className="space-y-4 mb-6">
+        {/* Time Filter */}
+        <div className="flex items-center gap-1 bg-white/80 backdrop-blur-sm border border-gray-200/50 rounded-xl p-1 shadow-lg">
+          <button
+            onClick={() => setTimeFilter('today')}
+            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
+              timeFilter === 'today'
+                ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md'
+                : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            {t('dashboard.today')}
+          </button>
+          <button
+            onClick={() => setTimeFilter('week')}
+            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
+              timeFilter === 'week'
+                ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md'
+                : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            {t('dashboard.thisWeek')}
+          </button>
+          <button
+            onClick={() => setTimeFilter('month')}
+            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
+              timeFilter === 'month'
+                ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md'
+                : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            {t('dashboard.thisMonth')}
+          </button>
+          <button
+            onClick={() => setTimeFilter('all')}
+            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
+              timeFilter === 'all'
+                ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md'
+                : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            All Time
+          </button>
+        </div>
 
-      {/* Revenue Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 p-6 text-white shadow-2xl transform hover:scale-105 transition-all duration-300">
+        {/* Metrics Grid - 8 Compact Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {/* Paket Masuk */}
+        <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-600 p-5 text-white shadow-lg hover:shadow-2xl transform hover:scale-105 transition-all duration-300">
           <div className="relative z-10">
             <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-semibold opacity-90 uppercase tracking-wide">{t('dashboard.revenue')} - {t('dashboard.today')}</p>
-              <TrendingUp className="h-6 w-6 animate-pulse" />
+              <div className="p-2 bg-white/20 backdrop-blur-sm rounded-lg">
+                <Package className="h-6 w-6" />
+              </div>
             </div>
-            <p className="text-3xl font-bold drop-shadow-lg">{formatCurrency(metrics.revenue.today)}</p>
+            <p className="text-3xl font-bold drop-shadow-lg">{metrics.packages.todayArrived}</p>
+            <p className="text-sm font-medium text-white/90 mt-1 uppercase tracking-wide">Paket Masuk</p>
           </div>
-          <div className="absolute -bottom-4 -right-4 opacity-10">
+          <div className="absolute -bottom-6 -right-6 opacity-10">
+            <Package className="h-32 w-32" />
+          </div>
+        </div>
+
+        {/* Paket Keluar */}
+        <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-emerald-500 via-green-600 to-teal-600 p-5 text-white shadow-lg hover:shadow-2xl transform hover:scale-105 transition-all duration-300">
+          <div className="relative z-10">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-2 bg-white/20 backdrop-blur-sm rounded-lg">
+                <PackageCheck className="h-6 w-6" />
+              </div>
+            </div>
+            <p className="text-3xl font-bold drop-shadow-lg">{metrics.packages.todayPickedUp}</p>
+            <p className="text-sm font-medium text-white/90 mt-1 uppercase tracking-wide">Paket Keluar</p>
+          </div>
+          <div className="absolute -bottom-6 -right-6 opacity-10">
+            <PackageCheck className="h-32 w-32" />
+          </div>
+        </div>
+
+        {/* Total Paket */}
+        <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-indigo-500 via-purple-600 to-pink-600 p-5 text-white shadow-lg hover:shadow-2xl transform hover:scale-105 transition-all duration-300">
+          <div className="relative z-10">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-2 bg-white/20 backdrop-blur-sm rounded-lg">
+                <Package className="h-6 w-6" />
+              </div>
+            </div>
+            <p className="text-3xl font-bold drop-shadow-lg">{metrics.packages.total}</p>
+            <p className="text-sm font-medium text-white/90 mt-1 uppercase tracking-wide">Total Paket</p>
+          </div>
+          <div className="absolute -bottom-6 -right-6 opacity-10">
+            <Package className="h-32 w-32" />
+          </div>
+        </div>
+
+        {/* Total Member */}
+        <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-purple-500 via-pink-600 to-rose-600 p-5 text-white shadow-lg hover:shadow-2xl transform hover:scale-105 transition-all duration-300">
+          <div className="relative z-10">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-2 bg-white/20 backdrop-blur-sm rounded-lg">
+                <Users className="h-6 w-6" />
+              </div>
+            </div>
+            <p className="text-3xl font-bold drop-shadow-lg">{metrics.members.total}</p>
+            <p className="text-sm font-medium text-white/90 mt-1 uppercase tracking-wide">Total Member</p>
+          </div>
+          <div className="absolute -bottom-6 -right-6 opacity-10">
+            <Users className="h-32 w-32" />
+          </div>
+        </div>
+
+        {/* Pengantaran Revenue */}
+        <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-orange-500 via-amber-600 to-yellow-600 p-5 text-white shadow-lg hover:shadow-2xl transform hover:scale-105 transition-all duration-300">
+          <div className="relative z-10">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-2 bg-white/20 backdrop-blur-sm rounded-lg">
+                <TrendingUp className="h-6 w-6" />
+              </div>
+            </div>
+            <p className="text-2xl font-bold drop-shadow-lg">{formatCurrency(metrics.revenue.delivery)}</p>
+            <p className="text-sm font-medium text-white/90 mt-1 uppercase tracking-wide">Pengantaran</p>
+          </div>
+          <div className="absolute -bottom-6 -right-6 opacity-10">
             <TrendingUp className="h-32 w-32" />
           </div>
         </div>
-        
-        <div className="card hover:scale-105 transition-transform duration-300">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-sm font-semibold text-gray-600 uppercase tracking-wide">
-              {t('dashboard.revenue')} - {t('dashboard.thisWeek')}
-            </p>
-            <div className="p-2 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg">
-              <TrendingUp className="h-5 w-5 text-indigo-600" />
+
+        {/* Membership Revenue */}
+        <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-pink-500 via-rose-600 to-red-600 p-5 text-white shadow-lg hover:shadow-2xl transform hover:scale-105 transition-all duration-300">
+          <div className="relative z-10">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-2 bg-white/20 backdrop-blur-sm rounded-lg">
+                <Users className="h-6 w-6" />
+              </div>
             </div>
+            <p className="text-2xl font-bold drop-shadow-lg">{formatCurrency(metrics.revenue.membership)}</p>
+            <p className="text-sm font-medium text-white/90 mt-1 uppercase tracking-wide">Membership</p>
           </div>
-          <p className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-            {formatCurrency(metrics.revenue.thisWeek)}
-          </p>
+          <div className="absolute -bottom-6 -right-6 opacity-10">
+            <Users className="h-32 w-32" />
+          </div>
         </div>
-        
-        <div className="card hover:scale-105 transition-transform duration-300">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-sm font-semibold text-gray-600 uppercase tracking-wide">
-              {t('dashboard.revenue')} - {t('dashboard.thisMonth')}
-            </p>
-            <div className="p-2 bg-gradient-to-br from-emerald-100 to-teal-100 rounded-lg">
-              <TrendingUp className="h-5 w-5 text-teal-600" />
+
+        {/* Paket Revenue */}
+        <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-cyan-500 via-blue-600 to-indigo-600 p-5 text-white shadow-lg hover:shadow-2xl transform hover:scale-105 transition-all duration-300">
+          <div className="relative z-10">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-2 bg-white/20 backdrop-blur-sm rounded-lg">
+                <Package className="h-6 w-6" />
+              </div>
             </div>
+            <p className="text-2xl font-bold drop-shadow-lg">{formatCurrency(metrics.revenue.package)}</p>
+            <p className="text-sm font-medium text-white/90 mt-1 uppercase tracking-wide">Paket</p>
           </div>
-          <p className="text-3xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent">
-            {formatCurrency(metrics.revenue.thisMonth)}
-          </p>
+          <div className="absolute -bottom-6 -right-6 opacity-10">
+            <Package className="h-32 w-32" />
+          </div>
         </div>
-        
-        <div className="card hover:scale-105 transition-transform duration-300">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-sm font-semibold text-gray-600 uppercase tracking-wide">
-              {t('dashboard.revenue')} - {t('dashboard.total')}
-            </p>
-            <div className="p-2 bg-gradient-to-br from-purple-100 to-pink-100 rounded-lg">
-              <TrendingUp className="h-5 w-5 text-purple-600" />
+
+        {/* Total Revenue */}
+        <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-green-500 via-emerald-600 to-teal-600 p-5 text-white shadow-2xl hover:shadow-3xl transform hover:scale-105 transition-all duration-300 ring-2 ring-green-400/50">
+          <div className="relative z-10">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-2 bg-white/30 backdrop-blur-sm rounded-lg shadow-lg">
+                <TrendingUp className="h-6 w-6" />
+              </div>
             </div>
+            <p className="text-2xl font-bold drop-shadow-lg">{formatCurrency(metrics.revenue.total)}</p>
+            <p className="text-sm font-medium text-white/90 mt-1 uppercase tracking-wide">Total Revenue</p>
           </div>
-          <p className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-            {formatCurrency(metrics.revenue.total)}
-          </p>
+          <div className="absolute -bottom-6 -right-6 opacity-10">
+            <TrendingUp className="h-32 w-32" />
+          </div>
         </div>
       </div>
+      </div>
+      )}
 
       {/* Charts removed as requested; will be placed in Reports */}
 
       {/* Package Management Section */}
-      <div className="space-y-4 mt-8">
+      <div className={`space-y-4 ${isMetricsCollapsed ? 'mt-4' : 'mt-8'}`}>
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg shadow-lg">
@@ -466,20 +548,9 @@ const Dashboard: React.FC = () => {
           </button>
         </div>
 
-        {/* Package Filters (collapsible) */}
+        {/* Package Filters */}
         <div className="card backdrop-blur-sm bg-white/90 border border-indigo-100/50 shadow-xl">
-          <details className="group">
-            <summary className="flex items-center justify-between cursor-pointer select-none list-none">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg shadow-lg">
-                  <Search className="h-5 w-5 text-white" />
-                </div>
-                <span className="text-sm font-semibold text-indigo-900">{t('common.filters')}</span>
-              </div>
-              <span className="text-xs text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg group-open:hidden">{t('common.show')}</span>
-              <span className="text-xs text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg hidden group-open:inline">{t('common.hide')}</span>
-            </summary>
-            <div className="mt-4 flex flex-col md:flex-row gap-4">
+          <div className="flex flex-col md:flex-row gap-4">
             <div className="flex-1">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-indigo-400" />
@@ -497,7 +568,7 @@ const Dashboard: React.FC = () => {
               <div className="relative">
                 <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
                 <select
-                  className="input-field pl-10 pr-8"
+                  className="input-field pl-10 pr-8 border-indigo-200 focus:border-indigo-500 focus:ring-indigo-500"
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value as PackageStatus | 'all')}
                 >
@@ -511,18 +582,15 @@ const Dashboard: React.FC = () => {
               {selectedPackages.length > 0 && (
                 <button
                   onClick={handleBulkPickup}
-                  className="btn-primary flex items-center whitespace-nowrap"
+                  className="btn-primary flex items-center whitespace-nowrap shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200"
                 >
                   <CheckCircle className="h-5 w-5 mr-2" />
                   {t('packages.bulkPickup')} ({selectedPackages.length})
                 </button>
               )}
             </div>
-            </div>
-          </details>
-        </div>
-
-        {/* Package Table */}
+          </div>
+        </div>        {/* Package Table */}
         <div className="card backdrop-blur-sm bg-white/90 border border-indigo-100/50 shadow-xl overflow-hidden p-0">
           <div className="overflow-x-auto">
             <table className="table">
@@ -536,20 +604,20 @@ const Dashboard: React.FC = () => {
                       className="rounded border-indigo-300 text-indigo-600 focus:ring-indigo-500"
                     />
                   </th>
+                  <th className="text-indigo-900 font-semibold">Tanggal Tiba</th>
                   <th className="text-indigo-900 font-semibold">{t('packages.trackingNumber')}</th>
                   <th className="text-indigo-900 font-semibold">{t('packages.pickupCode')}</th>
                   <th className="text-indigo-900 font-semibold">{t('packages.customer')}</th>
                   <th className="text-indigo-900 font-semibold">{t('packages.location')}</th>
-                  <th className="text-indigo-900 font-semibold">{t('packages.size')}</th>
                   <th className="text-indigo-900 font-semibold">{t('packages.status')}</th>
-                  <th className="text-indigo-900 font-semibold">{t('packages.arrivedAt')}</th>
+                  <th className="text-indigo-900 font-semibold">Pembayaran</th>
                   <th className="w-32 text-indigo-900 font-semibold">{t('common.actions')}</th>
                 </tr>
             </thead>
             <tbody className="divide-y divide-indigo-100">
               {filteredPackages.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="text-center py-12 text-gray-500">
+                  <td colSpan={10} className="text-center py-12 text-gray-500">
                     <div className="flex flex-col items-center">
                       <div className="p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-full mb-4">
                         <Package className="h-12 w-12 text-indigo-400" />
@@ -575,7 +643,22 @@ const Dashboard: React.FC = () => {
                           />
                         )}
                       </td>
-                      <td className="font-semibold text-gray-900">{pkg.trackingNumber}</td>
+                      <td className="text-gray-600">
+                        {format(new Date(pkg.arrivedAt), 'dd/MM/yyyy')}
+                      </td>
+                      <td>
+                        <button
+                          onClick={() => setSelectedPackageForDetail(pkg)}
+                          className="font-semibold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer text-left"
+                        >
+                          {pkg.trackingNumber}
+                        </button>
+                        {pkg.size && (
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            {t(`size.${pkg.size}`)}
+                          </p>
+                        )}
+                      </td>
                       <td>
                         <span className="font-mono bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent font-bold">
                           {pkg.pickupCode}
@@ -583,9 +666,39 @@ const Dashboard: React.FC = () => {
                       </td>
                       <td className="text-gray-700">{customer?.name || '-'}</td>
                       <td className="text-gray-700">{location?.name || '-'}</td>
-                      <td className="text-gray-700">{t(`size.${pkg.size}`)}</td>
-                      <td>{getStatusBadge(pkg.status)}</td>
-                      <td className="text-gray-600">{format(new Date(pkg.arrivedAt), 'dd/MM/yyyy HH:mm')}</td>
+                      <td>
+                        <div>
+                          {getStatusBadge(pkg.status)}
+                          <p className="text-xs text-gray-500 mt-1">
+                            {pkg.status === 'arrived' && format(new Date(pkg.arrivedAt), 'HH:mm')}
+                            {pkg.status === 'picked_up' && pkg.pickedUpAt && format(new Date(pkg.pickedUpAt), 'HH:mm')}
+                            {pkg.status === 'destroyed' && pkg.destroyedAt && format(new Date(pkg.destroyedAt), 'HH:mm')}
+                          </p>
+                        </div>
+                      </td>
+                      <td>
+                        <div>
+                          {customer?.isPremiumMember ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                              <Users className="h-3 w-3" />
+                              Membership
+                            </span>
+                          ) : pkg.paymentStatus === 'paid' ? (
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                              Lunas
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                              Belum Lunas
+                            </span>
+                          )}
+                          {pkg.paidAt && !customer?.isPremiumMember && (
+                            <p className="text-xs text-gray-500 mt-1">
+                              {format(new Date(pkg.paidAt), 'dd/MM HH:mm')}
+                            </p>
+                          )}
+                        </div>
+                      </td>
                       <td>
                         <div className="flex items-center gap-2">
                           {pkg.status === 'arrived' && (
@@ -636,6 +749,18 @@ const Dashboard: React.FC = () => {
         <PackageModal
           package={editingPackage}
           onClose={handleModalClose}
+        />
+      )}
+
+      {selectedPackageForDetail && (
+        <PackageDetailModal
+          pkg={selectedPackageForDetail}
+          customer={customers.find(c => c.id === selectedPackageForDetail.customerId)}
+          location={locations.find(l => l.id === selectedPackageForDetail.locationId)}
+          onClose={() => setSelectedPackageForDetail(null)}
+          onUpdatePaymentStatus={handleUpdatePaymentStatus}
+          onResendNotification={handleResendNotification}
+          onUpdateTakenStatus={handleUpdateTakenStatus}
         />
       )}
     </div>

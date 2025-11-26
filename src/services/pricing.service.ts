@@ -11,46 +11,61 @@ export interface PriceCalculation {
 export const calculatePackagePrice = (
   pkg: Package,
   location: Location,
-  customer: Customer
+  _customer: Customer
 ): PriceCalculation => {
   const days = Math.max(1, differenceInDays(new Date(), new Date(pkg.arrivedAt)));
   let basePrice = 0;
 
+  // Apply grace period (convert hours to days)
+  const graceDays = location.gracePeriod ? location.gracePeriod / 24 : 0;
+  const chargeableDays = Math.max(0, days - graceDays);
+
   // Calculate base price based on pricing scheme
   switch (location.pricingScheme) {
-    case 'fixed':
-      basePrice = location.fixedPrice || 0;
+    case 'flat':
+      basePrice = (location.flatDailyPrice || 0) * chargeableDays;
       break;
 
     case 'progressive':
-      if (location.progressiveTiers && location.progressiveTiers.length > 0) {
-        // Find the appropriate tier
-        const sortedTiers = [...location.progressiveTiers].sort((a, b) => b.days - a.days);
-        const tier = sortedTiers.find((t) => days >= t.days) || sortedTiers[sortedTiers.length - 1];
-        basePrice = tier.price;
+      // Entry price + (next day price * additional days)
+      if (chargeableDays > 0) {
+        basePrice = (location.progressiveEntryPrice || 0) + 
+                   ((location.progressiveNextDayPrice || 0) * Math.max(0, chargeableDays - 1));
       }
       break;
 
-    case 'size_based':
+    case 'flat_size':
       if (location.sizeBasedPrices) {
         basePrice = location.sizeBasedPrices[pkg.size] || 0;
       }
       break;
+
+    case 'progressive_item':
+      // First item price + (next item price * additional items)
+      // For now, we'll treat it as 1 item per day
+      if (chargeableDays > 0) {
+        basePrice = (location.progressiveItemFirstPrice || 0) + 
+                   ((location.progressiveItemNextPrice || 0) * Math.max(0, chargeableDays - 1));
+      }
+      break;
+
+    // Legacy support
+    default:
+      if (location.fixedPrice) {
+        basePrice = location.fixedPrice;
+      }
+      break;
   }
 
-  // Apply member discount
-  let discount = 0;
-  if (customer.isPremiumMember && location.memberDiscount) {
-    discount = (basePrice * location.memberDiscount) / 100;
-  }
-
-  const finalPrice = basePrice - discount;
+  // No member discount in new system
+  const discount = 0;
+  const finalPrice = Math.max(0, basePrice - discount);
 
   return {
     basePrice,
     discount,
     finalPrice,
-    days,
+    days: chargeableDays,
   };
 };
 

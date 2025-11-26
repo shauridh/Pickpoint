@@ -43,17 +43,22 @@ export const saveUsers = (users: User[]): void => {
   saveToStorage(STORAGE_KEYS.USERS, users);
 };
 
-export const addUser = (user: User): void => {
+export const addUser = (userData: Omit<User, 'id' | 'createdAt'>): void => {
   const users = getUsers();
-  users.push(user);
+  const newUser: User = {
+    ...userData,
+    id: Math.random().toString(36).substr(2, 9),
+    createdAt: new Date().toISOString(),
+  };
+  users.push(newUser);
   saveUsers(users);
 };
 
-export const updateUser = (id: string, updates: Partial<User>): void => {
+export const updateUser = (updatedUser: User): void => {
   const users = getUsers();
-  const index = users.findIndex((u) => u.id === id);
+  const index = users.findIndex((u) => u.id === updatedUser.id);
   if (index !== -1) {
-    users[index] = { ...users[index], ...updates };
+    users[index] = updatedUser;
     saveUsers(users);
   }
 };
@@ -138,9 +143,31 @@ export const saveLocations = (locations: Location[]): void => {
   saveToStorage(STORAGE_KEYS.LOCATIONS, locations);
 };
 
-export const addLocation = (location: Location): void => {
+export const addLocation = (location: Partial<Location>): void => {
   const locations = getLocations();
-  locations.push(location);
+  const newLocation: Location = {
+    id: Date.now().toString(),
+    name: location.name || '',
+    address: location.address || '',
+    phone: location.phone,
+    pricingScheme: location.pricingScheme || 'flat',
+    gracePeriod: location.gracePeriod || 0,
+    flatDailyPrice: location.flatDailyPrice,
+    progressiveEntryPrice: location.progressiveEntryPrice,
+    progressiveNextDayPrice: location.progressiveNextDayPrice,
+    sizeBasedPrices: location.sizeBasedPrices,
+    progressiveItemFirstPrice: location.progressiveItemFirstPrice,
+    progressiveItemNextPrice: location.progressiveItemNextPrice,
+    deliveryEnabled: location.deliveryEnabled || false,
+    deliveryPrice: location.deliveryPrice,
+    membershipEnabled: location.membershipEnabled || false,
+    membershipPrice: location.membershipPrice,
+    fixedPrice: location.fixedPrice,
+    memberDiscount: location.memberDiscount || 0,
+    isActive: location.isActive !== undefined ? location.isActive : true,
+    createdAt: new Date().toISOString(),
+  };
+  locations.push(newLocation);
   saveLocations(locations);
 };
 
@@ -167,15 +194,22 @@ export const getSettings = (): AppSettings => {
     companyName: 'PickPoint',
     whatsapp: {
       enabled: true,
-      apiUrl: 'https://seen.getsender.id/send-message',
+      apiUrl: 'api/wa/send',
       apiKey: 'yBMXcDk5iWz9MdEmyu8eBH2uhcytui',
       sender: '6285777875132',
       method: 'POST',
+      provider: 'generic',
       sendArrivalNotification: true,
       sendMembershipNotification: true,
       sendReminderNotification: true,
       reminderDays: 7,
     },
+    notificationTemplates: {
+      packageArrival: 'Hi {name}, 👋\n\nPaket *{tracking}* sudah dapat diambil di PickPoint {location}!\n\n📦 Kode Pengambilan: *{pickup_code}*\n\nLihat detail lengkap paket Anda:\n{link}\n\n💳 Bayar sekarang untuk proses pengambilan lebih cepat!\n\nTerima kasih telah menggunakan PickPoint. 😊',
+      membership: 'Terima kasih {name}! 🎉\n\nSelamat! Anda telah menjadi *Member Premium PickPoint*\n\n✨ Benefit yang Anda dapatkan:\n• Gratis biaya simpan paket\n• Prioritas pengambilan\n• Notifikasi instant\n• Penyimpanan lebih lama\n\n📅 Masa aktif: {start_date} - {end_date}\n⏰ Durasi: {duration} bulan\n\nNikmati kemudahan layanan PickPoint tanpa biaya tambahan!\n\nSalam,\nTim PickPoint 💙',
+      membershipReminder: '⏰ Reminder Membership PickPoint\n\nHi {name},\n\nMembership premium Anda akan berakhir dalam *{days_left} hari* ({end_date}).\n\n🔄 Perpanjang sekarang untuk terus menikmati:\n• Gratis biaya simpan paket\n• Prioritas layanan\n• Benefit eksklusif lainnya\n\n📞 Hubungi admin kami untuk perpanjangan atau upgrade paket membership.\n\nJangan sampai ketinggalan benefit premium Anda!\n\nSalam,\nTim PickPoint 💙',
+      test: '✅ Test Notifikasi PickPoint\n\nSistem notifikasi WhatsApp berjalan dengan baik!\n\nJika Anda menerima pesan ini, konfigurasi sudah benar dan siap digunakan.\n\n🚀 PickPoint - Solusi Penerimaan Paket Anda'
+    }
   });
 };
 
@@ -232,9 +266,10 @@ export const initializeDefaultData = (): void => {
     name: 'Main Office',
     address: 'Jl. Contoh No. 123, Jakarta',
     phone: '081234567890',
-    pricingScheme: 'fixed',
-    fixedPrice: 5000,
-    memberDiscount: 20,
+    pricingScheme: 'flat',
+    gracePeriod: 0,
+    flatDailyPrice: 5000,
+    memberDiscount: 0,
     isActive: true,
     createdAt: new Date().toISOString(),
   };

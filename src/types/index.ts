@@ -32,6 +32,8 @@ export interface Package {
   notes?: string;
   createdBy: string;
   price?: number;
+  paymentStatus?: 'paid' | 'unpaid';
+  paidAt?: string;
 }
 
 // Customer Types
@@ -40,6 +42,7 @@ export interface Customer {
   name: string;
   phone: string;
   unitNumber: string;
+  locationId: string;
   email?: string;
   isPremiumMember: boolean;
   membershipStartDate?: string;
@@ -49,12 +52,7 @@ export interface Customer {
 }
 
 // Location Types
-export type PricingScheme = 'fixed' | 'progressive' | 'size_based';
-
-export interface PricingTier {
-  days: number;
-  price: number;
-}
+export type PricingScheme = 'flat' | 'progressive' | 'flat_size' | 'progressive_item';
 
 export interface SizeBasedPrice {
   small: number;
@@ -69,10 +67,25 @@ export interface Location {
   address: string;
   phone?: string;
   pricingScheme: PricingScheme;
-  fixedPrice?: number;
-  progressiveTiers?: PricingTier[];
+  gracePeriod?: number; // in hours
+  // Flat - per day
+  flatDailyPrice?: number;
+  // Progressive - entry + next days
+  progressiveEntryPrice?: number;
+  progressiveNextDayPrice?: number;
+  // Flat Size
   sizeBasedPrices?: SizeBasedPrice;
-  memberDiscount?: number; // Percentage
+  // Progressive Item - first + next items (cut off 23:59)
+  progressiveItemFirstPrice?: number;
+  progressiveItemNextPrice?: number;
+  // Add-ons
+  deliveryEnabled?: boolean;
+  deliveryPrice?: number;
+  membershipEnabled?: boolean;
+  membershipPrice?: number;
+  // Legacy
+  fixedPrice?: number;
+  memberDiscount?: number;
   isActive: boolean;
   createdAt: string;
 }
@@ -84,6 +97,7 @@ export interface WhatsAppSettings {
   apiKey: string;
   sender?: string;
   method?: 'POST' | 'GET';
+  provider?: 'generic' | 'fonnte' | 'watzap';
   sendArrivalNotification: boolean;
   sendMembershipNotification: boolean;
   sendReminderNotification: boolean;
@@ -98,6 +112,12 @@ export interface AppSettings {
   pickupCodeLength: number;
   companyName: string;
   companyLogo?: string;
+  notificationTemplates?: {
+    packageArrival?: string;
+    membership?: string;
+    membershipReminder?: string;
+    test?: string;
+  };
 }
 
 // Report Types
@@ -108,6 +128,7 @@ export interface PackageStats {
   currentInventory: number;
   todayArrived: number;
   todayPickedUp: number;
+  total: number;
 }
 
 export interface RevenueStats {
@@ -115,11 +136,19 @@ export interface RevenueStats {
   thisWeek: number;
   thisMonth: number;
   total: number;
+  delivery: number;
+  membership: number;
+  package: number;
+}
+
+export interface MemberStats {
+  total: number;
 }
 
 export interface DashboardMetrics {
   packages: PackageStats;
   revenue: RevenueStats;
+  members: MemberStats;
   activeMembers: number;
   totalCustomers: number;
 }

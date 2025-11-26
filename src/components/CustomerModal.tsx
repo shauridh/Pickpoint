@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, Crown } from 'lucide-react';
+import { X, Crown, Info } from 'lucide-react';
 import { Customer } from '@/types';
-import { addCustomer, updateCustomer } from '@/services/storage.service';
+import { addCustomer, updateCustomer, getLocations } from '@/services/storage.service';
 import { sendMembershipActivationNotification } from '@/services/whatsapp.service';
-import { generateId, validateEmail, validatePhone } from '@/utils/helpers';
-import { addYears } from 'date-fns';
+import { generateId, validatePhone } from '@/utils/helpers';
+import { addMonths } from 'date-fns';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface CustomerModalProps {
   customer?: Customer;
@@ -14,16 +15,20 @@ interface CustomerModalProps {
 
 const CustomerModal: React.FC<CustomerModalProps> = ({ customer: editCustomer, onClose }) => {
   const { t } = useTranslation();
+  const { user } = useAuth();
+  const locations = getLocations();
+  const isAdmin = user?.role === 'admin';
 
   const [formData, setFormData] = useState({
     name: editCustomer?.name || '',
     phone: editCustomer?.phone || '',
     unitNumber: editCustomer?.unitNumber || '',
-    email: editCustomer?.email || '',
+    locationId: editCustomer?.locationId || (isAdmin ? '' : user?.locationId || ''),
     isPremiumMember: editCustomer?.isPremiumMember || false,
     membershipStartDate: editCustomer?.membershipStartDate || '',
     membershipEndDate: editCustomer?.membershipEndDate || '',
-    notificationEnabled: editCustomer?.notificationEnabled ?? true,
+    membershipDuration: 1, // Default 1 month
+    notificationEnabled: true, // Always enabled for WhatsApp notifications
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -40,9 +45,7 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ customer: editCustomer, o
       newErrors.phone = 'Invalid phone number';
     }
     if (!formData.unitNumber.trim()) newErrors.unitNumber = 'Required';
-    if (formData.email && !validateEmail(formData.email)) {
-      newErrors.email = 'Invalid email';
-    }
+    if (!formData.locationId) newErrors.locationId = 'Required';
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -90,8 +93,10 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ customer: editCustomer, o
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value, type, checked } = e.target;
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    const type = (e.target as HTMLInputElement).type;
+    const checked = (e.target as HTMLInputElement).checked;
     const fieldValue = type === 'checkbox' ? checked : value;
     
     setFormData(prev => ({ ...prev, [name]: fieldValue }));
@@ -105,7 +110,7 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ customer: editCustomer, o
       setShowMembershipFields(checked);
       if (checked && !formData.membershipStartDate) {
         const start = new Date().toISOString().split('T')[0];
-        const end = addYears(new Date(), 1).toISOString().split('T')[0];
+        const end = addMonths(new Date(), formData.membershipDuration).toISOString().split('T')[0];
         setFormData(prev => ({
           ...prev,
           membershipStartDate: start,
@@ -113,6 +118,18 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ customer: editCustomer, o
         }));
       }
     }
+  };
+
+  const handleDurationChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const duration = parseInt(e.target.value);
+    const start = formData.membershipStartDate || new Date().toISOString().split('T')[0];
+    const end = addMonths(new Date(start), duration).toISOString().split('T')[0];
+    setFormData(prev => ({
+      ...prev,
+      membershipDuration: duration,
+      membershipStartDate: start,
+      membershipEndDate: end,
+    }));
   };
 
   return (
@@ -177,22 +194,37 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ customer: editCustomer, o
               </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                {t('customers.email')}
-              </label>
-              <input
-                type="email"
-                name="email"
-                value={formData.email}
-                onChange={handleChange}
-                className={`input-field ${errors.email ? 'border-red-500' : ''}`}
-                placeholder="customer@example.com"
-              />
-              {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
-            </div>
+            {/* Location - Only for Admin */}
+            {isAdmin ? (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Lokasi *
+                </label>
+                <select
+                  name="locationId"
+                  value={formData.locationId}
+                  onChange={handleChange}
+                  className={`input-field ${errors.locationId ? 'border-red-500' : ''}`}
+                >
+                  <option value="">Pilih Lokasi</option>
+                  {locations.filter(l => l.isActive).map(location => (
+                    <option key={location.id} value={location.id}>
+                      {location.name}
+                    </option>
+                  ))}
+                </select>
+                {errors.locationId && <p className="text-red-500 text-xs mt-1">{errors.locationId}</p>}
+              </div>
+            ) : (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-sm text-blue-800">
+                  <strong>Lokasi:</strong> {locations.find(l => l.id === formData.locationId)?.name || 'Tidak ditemukan'}
+                </p>
+                <p className="text-xs text-blue-600 mt-1">Lokasi disesuaikan dengan penempatan Anda</p>
+              </div>
+            )}
 
-            <div className="flex items-center space-x-4 py-2">
+            <div className="flex items-center justify-between py-2">
               <label className="flex items-center space-x-2 cursor-pointer">
                 <input
                   type="checkbox"
@@ -207,50 +239,36 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ customer: editCustomer, o
                 </span>
               </label>
 
-              <label className="flex items-center space-x-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  name="notificationEnabled"
-                  checked={formData.notificationEnabled}
-                  onChange={handleChange}
-                  className="rounded"
-                />
-                <span className="text-sm font-medium text-gray-700">
-                  {t('customers.notifications')}
-                </span>
-              </label>
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <Info className="h-4 w-4 text-blue-500" />
+                <span className="text-xs">Notifikasi WhatsApp aktif otomatis</span>
+              </div>
             </div>
 
             {showMembershipFields && (
-              <div className="border-t border-gray-200 pt-4">
-                <h4 className="text-sm font-semibold text-gray-900 mb-3">
+              <div className="border-t border-gray-200 pt-4 space-y-3">
+                <h4 className="text-sm font-semibold text-gray-900 mb-2 flex items-center gap-2">
+                  <Crown className="h-4 w-4 text-yellow-500" />
                   {t('customers.membershipPeriod')}
                 </h4>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Start Date
-                    </label>
-                    <input
-                      type="date"
-                      name="membershipStartDate"
-                      value={formData.membershipStartDate}
-                      onChange={handleChange}
-                      className="input-field"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      End Date
-                    </label>
-                    <input
-                      type="date"
-                      name="membershipEndDate"
-                      value={formData.membershipEndDate}
-                      onChange={handleChange}
-                      className="input-field"
-                    />
-                  </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Durasi Membership *
+                  </label>
+                  <select
+                    value={formData.membershipDuration}
+                    onChange={handleDurationChange}
+                    className="input-field"
+                  >
+                    <option value={1}>1 Bulan</option>
+                    <option value={3}>3 Bulan</option>
+                    <option value={6}>6 Bulan</option>
+                    <option value={12}>12 Bulan</option>
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1.5">
+                    Membership akan aktif mulai hari ini untuk {formData.membershipDuration} bulan
+                  </p>
                 </div>
               </div>
             )}

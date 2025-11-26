@@ -15,6 +15,7 @@ import Users from './pages/Users';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 import PublicPackageDetail from './pages/PublicPackageDetail';
+import LandingPage from './pages/LandingPage';
 
 // Initialize default data on first load
 initializeDefaultData();
@@ -24,7 +25,8 @@ const App: React.FC = () => {
     <BrowserRouter>
       <AuthProvider>
         <Routes>
-          {/* Public Route - No Auth Required */}
+          {/* Public Routes - No Auth Required */}
+          <Route path="/" element={<LandingPage />} />
           <Route path="/p/:trackingNumber/:pickupCode" element={<PublicPackageDetail />} />
           
           <Route path="/login" element={<Login />} />

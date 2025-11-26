@@ -64,7 +64,9 @@ export const generatePackageDetailUrl = (
   trackingNumber: string,
   pickupCode: string
 ): string => {
-  const baseUrl = window.location.origin;
+  // Use public domain for package tracking links
+  const isProduction = window.location.hostname !== 'localhost' && !window.location.hostname.includes('127.0.0.1');
+  const baseUrl = isProduction ? 'https://pickpoint.my.id' : window.location.origin;
   return `${baseUrl}/p/${trackingNumber}/${pickupCode}`;
 };
 

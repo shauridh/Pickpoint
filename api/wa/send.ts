@@ -64,15 +64,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Get WhatsApp Gateway URL from environment or use default
     const gatewayUrl = process.env.WHATSAPP_GATEWAY_URL || 'https://seen.getsender.id/send-message';
-    
-    // Forward request to WhatsApp Gateway
-    const response = await fetch(gatewayUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(gatewayPayload),
-    });
+
+    // Choose payload format: default JSON, allow override or provider-specific
+    const format: 'json' | 'form' = (body.format || (provider === 'fonnte' ? 'form' : 'json')) as 'json' | 'form';
+
+    let response: Response;
+    if (format === 'form') {
+      const form = new URLSearchParams();
+      Object.entries(gatewayPayload).forEach(([k, v]) => form.append(k, v));
+
+      // Some providers (e.g., fonnte) prefer token in header; include if present
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      };
+      if (provider === 'fonnte' && apiKey) {
+        headers['Authorization'] = apiKey; // Fonnte supports Authorization: token
+      }
+
+      response = await fetch(gatewayUrl, {
+        method: 'POST',
+        headers,
+        body: form.toString(),
+      });
+    } else {
+      response = await fetch(gatewayUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(gatewayPayload),
+      });
+    }
 
     // Safe parse upstream response (may be empty or plain text)
     const rawText = await response.text();
@@ -101,7 +123,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       requestId,
       gatewayPayload,
       data,
-      message: response.ok ? (data?.message || 'Sent') : (data?.error || 'Failed')
+      message: response.ok
+        ? (data?.message || (data?.raw ? 'Sent (text response)' : 'Sent'))
+        : `Failed (${response.status})${data?.raw ? ": " + String(data.raw).slice(0, 200) : (data?.error ? ": " + data.error : ' (empty response)')}`
     };
 
     return res.status(response.status).json(normalized);

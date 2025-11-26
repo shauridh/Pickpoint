@@ -529,6 +529,7 @@ const Dashboard: React.FC = () => {
                 </button>
               )}
             </div>
+            </div>
           </details>
         </div>
 

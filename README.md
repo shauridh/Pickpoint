@@ -1,3 +1,6 @@
+<<<<<<< HEAD
+# Pickpoint
+=======
 # PickPoint - Package Management System
 
 Sistem manajemen paket untuk pickup point dengan fitur komprehensif untuk mengelola seluruh siklus hidup paket.
@@ -33,19 +36,18 @@ npm run preview
 ## Tech Stack
 
 - **Frontend**: React 18 + TypeScript
-- **Backend**: Netlify Functions (Serverless)
-- **Database**: Supabase (PostgreSQL)
 - **Styling**: Tailwind CSS
 - **Routing**: React Router v6
 - **State Management**: Zustand
 - **Charts**: Recharts
 - **i18n**: i18next
 - **Icons**: Lucide React
+- **Barcode Scanner**: html5-qrcode
 - **Build Tool**: Vite
 
-## Deployment
+## Storage
 
-Lihat [DEPLOY.md](./DEPLOY.md) untuk panduan lengkap deploy ke Netlify + Supabase.
+Data disimpan menggunakan localStorage browser untuk kemudahan deployment dan penggunaan.
 
 ## Default Login
 

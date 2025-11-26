@@ -15,18 +15,7 @@ import {
   XCircle,
   Filter,
 } from 'lucide-react';
-import { 
-  LineChart, 
-  Line, 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  Legend, 
-  ResponsiveContainer 
-} from 'recharts';
+// Charts removed - will be in Reports module
 import { 
   getPackages, 
   getCustomers, 
@@ -244,32 +233,32 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  // Chart data
-  const chartData = useMemo(() => {
-    const packages = getPackages();
-    const data = [];
+  // Chart data removed - will be in Reports module
+  // const chartData = useMemo(() => {
+  //   const packages = getPackages();
+  //   const data = [];
     
-    for (let i = 6; i >= 0; i--) {
-      const date = subDays(new Date(), i);
-      const dateStr = format(date, 'MM/dd');
+  //   for (let i = 6; i >= 0; i--) {
+  //     const date = subDays(new Date(), i);
+  //     const dateStr = format(date, 'MM/dd');
       
-      const arrived = packages.filter(p => 
-        format(new Date(p.arrivedAt), 'MM/dd') === dateStr
-      ).length;
+  //     const arrived = packages.filter(p => 
+  //       format(new Date(p.arrivedAt), 'MM/dd') === dateStr
+  //     ).length;
       
-      const pickedUp = packages.filter(p => 
-        p.pickedUpAt && format(new Date(p.pickedUpAt), 'MM/dd') === dateStr
-      ).length;
+  //     const pickedUp = packages.filter(p => 
+  //       p.pickedUpAt && format(new Date(p.pickedUpAt), 'MM/dd') === dateStr
+  //     ).length;
       
-      data.push({
-        date: dateStr,
-        arrived,
-        pickedUp,
-      });
-    }
+  //     data.push({
+  //       date: dateStr,
+  //       arrived,
+  //       pickedUp,
+  //     });
+  //   }
     
-    return data;
-  }, []);
+  //   return data;
+  // }, []);
 
   const StatCard: React.FC<{
     title: string;

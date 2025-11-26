@@ -1,10 +1,7 @@
 import { AppSettings } from '@/types';
 import { getSettings } from './storage.service';
 
-interface WhatsAppMessage {
-  to: string;
-  message: string;
-}
+// WhatsAppMessage interface removed - not used
 
 export const sendWhatsAppMessage = async (
   to: string,

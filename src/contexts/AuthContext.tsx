@@ -33,7 +33,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     if (foundUser) {
       // Don't store password in session
-      const { password: _, ...userWithoutPassword } = foundUser;
+      const { password: _ } = foundUser;
       const sessionUser = { ...foundUser };
       
       setUser(sessionUser);

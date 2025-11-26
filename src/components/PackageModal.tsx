@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, Camera, Scan } from 'lucide-react';
+import { X, Camera } from 'lucide-react';
 import { Package, PackageSize } from '@/types';
 import { 
   addPackage, 

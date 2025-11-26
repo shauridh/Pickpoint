@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X, Crown } from 'lucide-react';
 import { Customer } from '@/types';
 import { addCustomer, updateCustomer } from '@/services/storage.service';
 import { sendMembershipActivationNotification } from '@/services/whatsapp.service';
 import { generateId, validateEmail, validatePhone } from '@/utils/helpers';
-import { addMonths, addYears } from 'date-fns';
+import { addYears } from 'date-fns';
 
 interface CustomerModalProps {
   customer?: Customer;

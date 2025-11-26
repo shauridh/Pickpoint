@@ -1,0 +1,199 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 text-gray-900;
+    background-attachment: fixed;
+  }
+}
+
+@layer components {
+  /* Buttons with gradients and shadows */
+  .btn-primary {
+    @apply bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 
+           text-white font-semibold py-2.5 px-5 rounded-xl shadow-lg hover:shadow-xl 
+           transform hover:-translate-y-0.5 transition-all duration-200;
+  }
+  
+  .btn-secondary {
+    @apply bg-white hover:bg-gray-50 text-gray-700 font-semibold py-2.5 px-5 
+           rounded-xl shadow-md hover:shadow-lg border border-gray-200
+           transform hover:-translate-y-0.5 transition-all duration-200;
+  }
+  
+  .btn-danger {
+    @apply bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 
+           text-white font-semibold py-2.5 px-5 rounded-xl shadow-lg hover:shadow-xl
+           transform hover:-translate-y-0.5 transition-all duration-200;
+  }
+  
+  .btn-success {
+    @apply bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 
+           text-white font-semibold py-2.5 px-5 rounded-xl shadow-lg hover:shadow-xl
+           transform hover:-translate-y-0.5 transition-all duration-200;
+  }
+  
+  /* Glassmorphism input fields */
+  .input-field {
+    @apply w-full px-4 py-2.5 bg-white/60 backdrop-blur-sm border-2 border-gray-200/50 
+           rounded-xl focus:ring-2 focus:ring-blue-500/50 focus:border-blue-400 
+           outline-none transition-all duration-200 shadow-sm hover:shadow-md;
+  }
+  
+  /* Glassmorphism cards with gradient borders */
+  .card {
+    @apply bg-white/80 backdrop-blur-md rounded-2xl shadow-xl border border-white/20 p-6 
+           hover:shadow-2xl transition-all duration-300 relative overflow-hidden;
+  }
+  
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, #3b82f6, #8b5cf6, #ec4899);
+  }
+  
+  /* Stat cards with gradient backgrounds */
+  .stat-card {
+    @apply relative rounded-2xl p-6 text-white overflow-hidden shadow-2xl 
+           transform hover:scale-105 transition-all duration-300 cursor-pointer;
+  }
+  
+  .stat-card::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    right: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+    animation: shimmer 3s infinite;
+  }
+  
+  @keyframes shimmer {
+    0%, 100% { transform: translate(0, 0); }
+    50% { transform: translate(-10%, -10%); }
+  }
+  
+  /* Modern table with glassmorphism */
+  .table-container {
+    @apply overflow-hidden bg-white/80 backdrop-blur-md rounded-2xl shadow-2xl 
+           border border-white/20;
+  }
+  
+  .table {
+    @apply min-w-full divide-y divide-gray-200/50;
+  }
+  
+  .table thead {
+    @apply bg-gradient-to-r from-slate-50 to-blue-50/50 backdrop-blur-sm;
+  }
+  
+  .table th {
+    @apply px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider;
+  }
+  
+  .table tbody {
+    @apply divide-y divide-gray-100/50 bg-white/40;
+  }
+  
+  .table td {
+    @apply px-6 py-4 whitespace-nowrap text-sm text-gray-800;
+  }
+  
+  .table tbody tr {
+    @apply hover:bg-blue-50/30 transition-colors duration-150;
+  }
+  
+  /* Modern badges with gradients */
+  .badge {
+    @apply inline-flex items-center px-3 py-1 rounded-full text-xs font-bold
+           shadow-md backdrop-blur-sm;
+  }
+  
+  .badge-success {
+    @apply bg-gradient-to-r from-emerald-400 to-teal-500 text-white;
+  }
+  
+  .badge-warning {
+    @apply bg-gradient-to-r from-amber-400 to-orange-500 text-white;
+  }
+  
+  .badge-danger {
+    @apply bg-gradient-to-r from-red-400 to-pink-500 text-white;
+  }
+  
+  .badge-info {
+    @apply bg-gradient-to-r from-blue-400 to-indigo-500 text-white;
+  }
+  
+  .badge-purple {
+    @apply bg-gradient-to-r from-purple-400 to-pink-500 text-white;
+  }
+  
+  /* Sidebar styling */
+  .sidebar-item {
+    @apply relative flex items-center px-4 py-3 text-sm font-medium rounded-xl 
+           transition-all duration-200;
+  }
+  
+  .sidebar-item:hover {
+    @apply bg-white/10 backdrop-blur-sm transform translate-x-1;
+  }
+  
+  .sidebar-item.active {
+    @apply bg-gradient-to-r from-white/20 to-white/10 backdrop-blur-md shadow-lg;
+  }
+  
+  .sidebar-item.active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 4px;
+    height: 70%;
+    background: linear-gradient(180deg, #3b82f6, #8b5cf6);
+    border-radius: 0 4px 4px 0;
+  }
+  
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    @apply bg-gray-100/50 rounded-full;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    @apply bg-gradient-to-b from-blue-400 to-indigo-500 rounded-full;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    @apply from-blue-500 to-indigo-600;
+  }
+  
+  /* Glow effect for focus elements */
+  .glow-on-hover:hover {
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.5),
+                0 0 40px rgba(59, 130, 246, 0.3),
+                0 0 60px rgba(59, 130, 246, 0.1);
+  }
+  
+  /* Pulse animation for notifications */
+  @keyframes pulse-slow {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.8; }
+  }
+  
+  .animate-pulse-slow {
+    animation: pulse-slow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+}

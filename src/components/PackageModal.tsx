@@ -112,7 +112,6 @@ const PackageModal: React.FC<PackageModalProps> = ({ package: editPackage, onClo
         const newPackage: Package = {
           id: generateId(),
           ...formData,
-          pickupCode: '', // Will be generated after payment
           status: 'arrived',
           arrivedAt: new Date().toISOString(),
           createdBy: user?.id || '',

@@ -27,6 +27,7 @@ const PublicPackageDetail: React.FC = () => {
   const [paying, setPaying] = useState(false);
   const loc = useLocation();
   const hasLoadedRef = useRef(false);
+  const pkgRef = useRef<Package | null>(null);
 
   useEffect(() => {
     // Only load once
@@ -65,6 +66,7 @@ const PublicPackageDetail: React.FC = () => {
         localStorage.setItem('pickpoint_packages', JSON.stringify(updatedPackages));
       }
 
+      pkgRef.current = foundPackage;
       setPkg(foundPackage);
       setCustomer(foundCustomer);
       setLocation(foundLocation);
@@ -132,22 +134,27 @@ const PublicPackageDetail: React.FC = () => {
 
   // Poll payment status when not paid
   useEffect(() => {
-    if (!pkg || isPaid) return;
+    if (!pkgRef.current || isPaid) return;
     
     let timer: any;
     const poll = async () => {
       try {
-        const externalId = `PKG-${pkg.id}`;
+        if (!pkgRef.current) return;
+        const externalId = `PKG-${pkgRef.current.id}`;
         const resp = await fetch(`/api/payments/xendit-status?external_id=${encodeURIComponent(externalId)}`);
         if (resp.ok) {
           const data = await resp.json();
           if (data.status === 'PAID') {
             // mark paid locally
             const packages = JSON.parse(localStorage.getItem('pickpoint_packages') || '[]');
-            const updated = packages.map((p: Package) => p.id === pkg.id ? { ...p, paymentStatus: 'paid', paidAt: new Date().toISOString() } : p);
+            const updated = packages.map((p: Package) => p.id === pkgRef.current?.id ? { ...p, paymentStatus: 'paid', paidAt: new Date().toISOString() } : p);
             localStorage.setItem('pickpoint_packages', JSON.stringify(updated));
             // refresh view
-            setPkg({ ...pkg, paymentStatus: 'paid', paidAt: new Date().toISOString() });
+            if (pkgRef.current) {
+              const updatedPkg = { ...pkgRef.current, paymentStatus: 'paid' as const, paidAt: new Date().toISOString() };
+              pkgRef.current = updatedPkg;
+              setPkg(updatedPkg);
+            }
           }
         }
       } catch {}
@@ -155,7 +162,7 @@ const PublicPackageDetail: React.FC = () => {
     
     timer = setInterval(poll, 5000);
     return () => { if (timer) clearInterval(timer); };
-  }, [pkg?.id, isPaid]);
+  }, [isPaid]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">

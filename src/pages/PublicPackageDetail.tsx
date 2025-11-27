@@ -37,8 +37,11 @@ const PublicPackageDetail: React.FC = () => {
       const customers = JSON.parse(localStorage.getItem('pickpoint_customers') || '[]');
       const locations = JSON.parse(localStorage.getItem('pickpoint_locations') || '[]');
 
+      console.log('Searching for tracking number:', trackingNumber);
+      console.log('Available packages:', packages.map((p: Package) => p.trackingNumber));
+
       const foundPackage = packages.find(
-        (p: Package) => p.trackingNumber === trackingNumber
+        (p: Package) => p.trackingNumber?.toLowerCase() === trackingNumber?.toLowerCase()
       );
 
       if (!foundPackage) {

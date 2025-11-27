@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { 
   Package as PackageIcon, 
@@ -27,11 +27,7 @@ const PublicPackageDetail: React.FC = () => {
   const [paying, setPaying] = useState(false);
   const loc = useLocation();
 
-  useEffect(() => {
-    loadPackageData();
-  }, [trackingNumber]);
-
-  const loadPackageData = () => {
+  const loadPackageData = useCallback(() => {
     try {
       const packages = JSON.parse(localStorage.getItem('pickpoint_packages') || '[]');
       const customers = JSON.parse(localStorage.getItem('pickpoint_customers') || '[]');
@@ -72,7 +68,11 @@ const PublicPackageDetail: React.FC = () => {
       setError('Gagal memuat data paket');
       setLoading(false);
     }
-  };
+  }, [trackingNumber, loc.search]);
+
+  useEffect(() => {
+    loadPackageData();
+  }, [loadPackageData]);
 
   // removed legacy dummy handler; real handler defined below
 
@@ -131,9 +131,10 @@ const PublicPackageDetail: React.FC = () => {
 
   // Poll payment status when not paid
   useEffect(() => {
+    if (!pkg || isPaid) return;
+    
     let timer: any;
     const poll = async () => {
-      if (!pkg || isPaid) return;
       try {
         const externalId = `PKG-${pkg.id}`;
         const resp = await fetch(`/api/payments/xendit-status?external_id=${encodeURIComponent(externalId)}`);
@@ -149,11 +150,11 @@ const PublicPackageDetail: React.FC = () => {
           }
         }
       } catch {}
-      timer = setTimeout(poll, 5000);
     };
-    poll();
-    return () => { if (timer) clearTimeout(timer); };
-  }, [pkg, isPaid]);
+    
+    timer = setInterval(poll, 5000);
+    return () => { if (timer) clearInterval(timer); };
+  }, [pkg?.id, isPaid]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">

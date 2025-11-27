@@ -107,13 +107,15 @@ const PublicPackageDetail: React.FC = () => {
       {/* Header */}
       <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-6 shadow-lg">
         <div className="max-w-4xl mx-auto px-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-white/20 backdrop-blur-sm rounded-lg">
-              <PackageIcon className="h-8 w-8" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold">Detail Paket</h1>
-              <p className="text-sm text-blue-100">PickPoint - Solusi Penerimaan Paket Anda</p>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-white/20 backdrop-blur-sm rounded-lg">
+                <PackageIcon className="h-8 w-8" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold">Detail Paket</h1>
+                <p className="text-lg font-mono font-bold">{trackingNumber} / {pickupCode}</p>
+              </div>
             </div>
           </div>
         </div>
@@ -153,22 +155,6 @@ const PublicPackageDetail: React.FC = () => {
             <div className="bg-white rounded-xl shadow-lg p-6">
               <h2 className="text-lg font-bold text-gray-900 mb-4">Informasi Paket</h2>
               <div className="space-y-4">
-                <div className="flex items-start gap-3 pb-4 border-b">
-                  <PackageIcon className="h-5 w-5 text-blue-600 mt-1" />
-                  <div className="flex-1">
-                    <p className="text-sm text-gray-600">Nomor Resi</p>
-                    <p className="font-mono font-bold text-gray-900 text-lg">{pkg.trackingNumber}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3 pb-4 border-b">
-                  <CheckCircle className="h-5 w-5 text-indigo-600 mt-1" />
-                  <div className="flex-1">
-                    <p className="text-sm text-gray-600">Kode Pengambilan</p>
-                    <p className="font-mono font-bold text-indigo-600 text-2xl">{pkg.pickupCode}</p>
-                    <p className="text-xs text-gray-500 mt-1">Tunjukkan kode ini saat mengambil paket</p>
-                  </div>
-                </div>
 
                 <div className="flex items-start gap-3 pb-4 border-b">
                   <Truck className="h-5 w-5 text-purple-600 mt-1" />

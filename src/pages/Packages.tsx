@@ -9,6 +9,7 @@ import {
   XCircle,
   Filter,
   Package as PackageIcon,
+  Eye,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { 
@@ -21,6 +22,9 @@ import {
 } from '@/services/storage.service';
 import { Package, PackageStatus } from '@/types';
 import PackageModal from '@/components/PackageModal';
+import PackageDetailModal from '@/components/PackageDetailModal';
+import { calculatePackagePrice } from '@/services/pricing.service';
+import { sendPackageArrivalNotification } from '@/services/whatsapp.service';
 
 const Packages: React.FC = () => {
   const { t } = useTranslation();
@@ -30,6 +34,7 @@ const Packages: React.FC = () => {
   const [editingPackage, setEditingPackage] = useState<Package | undefined>();
   const [selectedPackages, setSelectedPackages] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
+  const [detailPackage, setDetailPackage] = useState<Package | undefined>();
   const itemsPerPage = 10;
 
   const packages = getPackages();
@@ -107,6 +112,49 @@ const Packages: React.FC = () => {
       setSelectedPackages([]);
       window.location.reload();
     }
+  };
+
+  const handleResendNotification = async (packageId: string) => {
+    const pkg = packages.find(p => p.id === packageId);
+    if (!pkg) return;
+
+    const customer = customers.find(c => c.id === pkg.customerId);
+    const location = locations.find(l => l.id === pkg.locationId);
+
+    if (!customer || !location) {
+      alert('Data pelanggan atau lokasi tidak ditemukan');
+      return;
+    }
+
+    const success = await sendPackageArrivalNotification(
+      customer.name,
+      customer.phone,
+      pkg.trackingNumber,
+      pkg.pickupCode,
+      location.name
+    );
+
+    if (success) {
+      alert('Notifikasi berhasil dikirim ulang!');
+    } else {
+      alert('Gagal mengirim notifikasi. Periksa konfigurasi WhatsApp.');
+    }
+  };
+
+  const handleUpdatePaymentStatus = (packageId: string, status: 'paid' | 'unpaid') => {
+    updatePackage(packageId, {
+      paymentStatus: status,
+      paidAt: status === 'paid' ? new Date().toISOString() : undefined,
+    });
+    window.location.reload();
+  };
+
+  const handleUpdateTakenStatus = (packageId: string) => {
+    handleMarkAsPickedUp(packageId);
+  };
+
+  const handleViewDetail = (pkg: Package) => {
+    setDetailPackage(pkg);
   };
 
   const toggleSelectPackage = (id: string) => {
@@ -213,13 +261,14 @@ const Packages: React.FC = () => {
               <th>{t('packages.size')}</th>
               <th>{t('packages.status')}</th>
               <th>{t('packages.arrivedAt')}</th>
+              <th>Biaya</th>
               <th>{t('common.actions')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
             {paginatedPackages.length === 0 ? (
               <tr>
-                <td colSpan={9} className="text-center py-8 text-gray-500">
+                <td colSpan={10} className="text-center py-8 text-gray-500">
                   <PackageIcon className="h-12 w-12 mx-auto mb-2 text-gray-400" />
                   {t('common.noData')}
                 </td>
@@ -253,7 +302,26 @@ const Packages: React.FC = () => {
                     <td>{getStatusBadge(pkg.status)}</td>
                     <td>{format(new Date(pkg.arrivedAt), 'dd/MM/yyyy HH:mm')}</td>
                     <td>
+                      {(() => {
+                        const pricing = location && customer ? calculatePackagePrice(pkg, location, customer) : null;
+                        return pricing ? (
+                          <span className={`font-semibold ${
+                            pkg.paymentStatus === 'paid' ? 'text-green-600' : 'text-red-600'
+                          }`}>
+                            Rp {pricing.finalPrice.toLocaleString('id-ID')}
+                          </span>
+                        ) : '-';
+                      })()}
+                    </td>
+                    <td>
                       <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleViewDetail(pkg)}
+                          className="text-indigo-600 hover:text-indigo-700"
+                          title="Lihat Detail"
+                        >
+                          <Eye className="h-5 w-5" />
+                        </button>
                         {pkg.status === 'arrived' && (
                           <>
                             <button
@@ -384,6 +452,18 @@ const Packages: React.FC = () => {
         <PackageModal
           package={editingPackage}
           onClose={handleModalClose}
+        />
+      )}
+
+      {detailPackage && (
+        <PackageDetailModal
+          pkg={detailPackage}
+          customer={customers.find(c => c.id === detailPackage.customerId)}
+          location={locations.find(l => l.id === detailPackage.locationId)}
+          onClose={() => setDetailPackage(undefined)}
+          onUpdatePaymentStatus={handleUpdatePaymentStatus}
+          onResendNotification={handleResendNotification}
+          onUpdateTakenStatus={handleUpdateTakenStatus}
         />
       )}
     </div>

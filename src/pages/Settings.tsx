@@ -23,7 +23,7 @@ const Settings: React.FC = () => {
     }
   };
 
-  const handleTestNotification = async (useProxy: boolean = false) => {
+  const handleTestNotification = async () => {
     if (!testPhone || !settings?.whatsapp.enabled) {
       alert('Masukkan nomor telepon dan pastikan WhatsApp aktif');
       return;
@@ -43,95 +43,47 @@ const Settings: React.FC = () => {
       };
 
       let response;
-      const apiUrl = settings.whatsapp.apiUrl;
-      const isLocalProxy = apiUrl.startsWith('api/wa') || apiUrl.startsWith('/api/wa');
+      // ALWAYS use serverless proxy to avoid CORS
+      const endpoint = '/api/wa/send';
+        
+      response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          data: messageData
+        })
+      });
 
-      if (useProxy || isLocalProxy) {
-        // Use local api/wa endpoint (Netlify Function)
-        // Prefer redirect path /api/wa/send so netlify.toml redirects work in production and netlify dev
-        const endpoint = isLocalProxy ? '/api/wa/send' : '/.netlify/functions/whatsapp-proxy';
-        
-        response = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            method: settings.whatsapp.method || 'POST',
-            provider,
-            data: messageData
-          })
-        });
-
-        // Safe parse: handle empty or non-JSON responses
-        const rawText = await response.text();
-        let result: any = {};
-        if (rawText.trim().length > 0) {
-          try {
-            result = JSON.parse(rawText);
-          } catch {
-            result = { raw: rawText, success: false, message: 'Invalid JSON response' };
-          }
-        } else {
-          result = { success: response.ok, message: response.ok ? 'Sent (empty response)' : 'Failed (empty response)' };
+      // Safe parse: handle empty or non-JSON responses
+      const rawText = await response.text();
+      let result: any = {};
+      if (rawText.trim().length > 0) {
+        try {
+          result = JSON.parse(rawText);
+        } catch {
+          result = { raw: rawText, success: false, message: 'Invalid JSON response' };
         }
-        
-        if (!response.ok || !result.success) {
-          setTestResult({ 
-            success: false, 
-            message: `Error: ${result.message || result.error || response.statusText}` 
-          });
-          setTestLoading(false);
-          return;
-        }
-        
-        const successMsg = isLocalProxy 
-          ? '✅ Notifikasi berhasil dikirim via api/wa! Periksa WhatsApp Anda.' 
-          : '✅ Notifikasi berhasil dikirim melalui proxy! Periksa WhatsApp Anda.';
-        setTestResult({ success: true, message: successMsg });
       } else {
-        // Direct call (may fail due to CORS)
-        if (settings.whatsapp.method === 'GET') {
-          const params = new URLSearchParams(messageData);
-          response = await fetch(`${settings.whatsapp.apiUrl}?${params}`, {
-            method: 'GET',
-            headers: {
-              'Content-Type': 'application/json',
-            }
-          });
-        } else {
-          response = await fetch(settings.whatsapp.apiUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(messageData),
-          });
-        }
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          setTestResult({ success: false, message: `Gagal (${response.status}): ${errorText || response.statusText}` });
-          setTestLoading(false);
-          return;
-        }
-
-        // Safe parse response (some gateways return empty or plain text)
-        const rawText = await response.text();
-        let parsed: any = null;
-        if (rawText.trim().length > 0) {
-          try { parsed = JSON.parse(rawText); } catch { parsed = { raw: rawText }; }
-        } else {
-          parsed = { raw: '', empty: true };
-        }
-
-        setTestResult({ success: true, message: '✅ Notifikasi berhasil dikirim! ' + (parsed?.message ? parsed.message : 'Periksa WhatsApp Anda.') });
+        result = { success: response.ok, message: response.ok ? 'Sent (empty response)' : 'Failed (empty response)' };
       }
+      
+      if (!response.ok || !result.success) {
+        setTestResult({ 
+          success: false, 
+          message: result.message || result.error || response.statusText
+        });
+        setTestLoading(false);
+        return;
+      }
+      
+      setTestResult({ success: true, message: result.message || '✅ Notifikasi berhasil dikirim!' });
     } catch (error) {
       if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
         setTestResult({ 
           success: false, 
-          message: '❌ Gagal terhubung. Coba gunakan "Kirim via Proxy" atau gunakan api/wa sebagai URL. Periksa console (F12) untuk detail.' 
+          message: '❌ Gagal terhubung ke server. Pastikan Vercel dev berjalan di port 3000.' 
         });
       } else {
         setTestResult({ success: false, message: `❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}` });
@@ -227,7 +179,7 @@ const Settings: React.FC = () => {
                   whatsapp: { ...settings.whatsapp, apiUrl: e.target.value }
                 })}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                placeholder="https://api.example.com/send"
+                placeholder="api/wa/send (gunakan endpoint lokal)"
               />
             </div>
 
@@ -406,7 +358,7 @@ const Settings: React.FC = () => {
               className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             />
             <button
-              onClick={() => handleTestNotification(false)}
+              onClick={handleTestNotification}
               disabled={testLoading || !settings.whatsapp.enabled}
               className={`inline-flex items-center px-6 py-2 rounded-lg font-medium transition-all ${
                 testLoading || !settings.whatsapp.enabled
@@ -423,28 +375,6 @@ const Settings: React.FC = () => {
                 <>
                   <Send className="h-5 w-5 mr-2" />
                   Kirim Test
-                </>
-              )}
-            </button>
-            <button
-              onClick={() => handleTestNotification(true)}
-              disabled={testLoading || !settings.whatsapp.enabled}
-              className={`inline-flex items-center px-6 py-2 rounded-lg font-medium transition-all ${
-                testLoading || !settings.whatsapp.enabled
-                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  : 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700 shadow-md hover:shadow-lg'
-              }`}
-              title="Gunakan Netlify Function sebagai proxy untuk bypass CORS"
-            >
-              {testLoading ? (
-                <>
-                  <Loader className="h-5 w-5 mr-2 animate-spin" />
-                  Mengirim...
-                </>
-              ) : (
-                <>
-                  <Send className="h-5 w-5 mr-2" />
-                  Kirim via Proxy
                 </>
               )}
             </button>
@@ -482,11 +412,11 @@ const Settings: React.FC = () => {
           <div>
             <h3 className="font-medium text-gray-900 mb-2">🔧 Troubleshooting "Gagal terhubung ke server":</h3>
             <ul className="list-disc list-inside space-y-1 text-sm text-gray-700 ml-2">
-              <li><strong>URL API:</strong> Pastikan URL lengkap dengan protocol (https://)</li>
-              <li><strong>CORS:</strong> Server WhatsApp Gateway harus mengizinkan request dari domain Anda</li>
-              <li><strong>Method:</strong> Periksa dokumentasi API - gunakan GET atau POST sesuai spesifikasi</li>
-              <li><strong>API Key:</strong> Pastikan API key valid dan belum expired</li>
-              <li><strong>Network:</strong> Cek koneksi internet dan firewall</li>
+              <li><strong>Vercel Dev:</strong> Pastikan <code className="bg-white px-1 rounded">vercel dev</code> berjalan di port 3000</li>
+              <li><strong>API URL:</strong> Gunakan <code className="bg-white px-1 rounded">api/wa/send</code> (bukan URL external)</li>
+              <li><strong>API Key:</strong> Isi API key GetSender yang valid di .env atau Settings</li>
+              <li><strong>Format Nomor:</strong> Gunakan format 628xxx (tanpa +, tanpa spasi)</li>
+              <li><strong>Browser Console:</strong> Cek detail error di console (F12)</li>
             </ul>
           </div>
 
@@ -495,27 +425,28 @@ const Settings: React.FC = () => {
             
             <div className="space-y-3">
               <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                <p className="text-sm font-semibold text-green-700 mb-1">⚡ RECOMMENDED: Gunakan Local API Endpoint</p>
+                <p className="text-sm font-semibold text-green-700 mb-1">✅ Setup GetSender via Vercel Function</p>
                 <div className="text-xs text-green-700 space-y-1 font-mono">
                   <p>• URL: <code className="bg-white px-1 rounded">api/wa/send</code></p>
-                  <p>• Method: POST</p>
-                  <p>• Benefit: Tidak ada CORS error, setup paling simpel</p>
-                  <p>• Note: Nantinya hubungkan external API di Netlify Function</p>
+                  <p>• API Key: Dapatkan dari dashboard GetSender</p>
+                  <p>• Sender: Nomor WA bisnis Anda (628xxx)</p>
+                  <p>• Gateway: <code className="bg-white px-1 rounded">https://seen.getsender.id/send-message</code></p>
+                  <p>• Benefit: Tidak ada CORS, aman, cepat ⚡</p>
+                </div>
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-sm font-semibold text-blue-700 mb-1">🚀 Development Setup</p>
+                <div className="text-xs text-blue-700 space-y-1">
+                  <p>1. Jalankan: <code className="bg-white px-1 rounded">vercel dev</code></p>
+                  <p>2. Server ready di <code className="bg-white px-1 rounded">http://localhost:3000</code></p>
+                  <p>3. Test notifikasi dari Settings page</p>
+                  <p>4. Cek logs di terminal untuk debugging</p>
                 </div>
               </div>
 
               <div className="bg-white rounded-lg p-3 border border-gray-200">
-                <p className="text-sm font-semibold text-indigo-600 mb-1">1. Fonnte.com (Direct)</p>
-                <div className="text-xs text-gray-600 space-y-1 font-mono">
-                  <p>• URL: https://api.fonnte.com/send</p>
-                  <p>• Method: POST</p>
-                  <p>• API Key: Token dari dashboard fonnte</p>
-                  <p>• Body: {`{target, message, token}`}</p>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-lg p-3 border border-gray-200">
-                <p className="text-sm font-semibold text-green-600 mb-1">2. Watzap.id (Direct)</p>
+                <p className="text-sm font-semibold text-purple-600 mb-1">📦 Environment Variables (.env)</p>
                 <div className="text-xs text-gray-600 space-y-1 font-mono">
                   <p>• URL: https://api.watzap.id/v1/send_message</p>
                   <p>• Method: POST</p>

@@ -23,78 +23,61 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const requestId = Date.now().toString(36);
     console.log('[WA][REQ]', requestId, body);
 
-    const provider: 'generic' | 'fonnte' | 'watzap' = (
-      body.provider || 
-      body.data?.provider || 
-      process.env.WHATSAPP_PROVIDER || 
-      'generic'
-    ) as 'generic' | 'fonnte' | 'watzap';
-
-    // Build provider-specific payload
-    interface BaseData { 
-      number?: string; 
-      message?: string; 
-      api_key?: string; 
-      sender?: string; 
-      token?: string;
-      target?: string;
-    }
-    
-    const d: BaseData = body.data || body;
-    const apiKey = d.api_key || process.env.WA_API_KEY || d.token || '';
+    // Extract data from request body
+    const d = body.data || body;
+    const apiKey = d.api_key || process.env.WA_API_KEY || '';
     const sender = d.sender || process.env.WA_SENDER || '';
-    const number = (d.number || d.target || '').replace(/^0/, '62');
+    let number = d.number || '';
     const message = d.message || '';
 
-    let gatewayPayload: Record<string, string>;
-    switch (provider) {
-      case 'fonnte':
-        // Fonnte expects: target, message, token
-        gatewayPayload = { target: number, message, token: apiKey };
-        break;
-      case 'watzap':
-        // Watzap expects: api_key, number, message
-        gatewayPayload = { api_key: apiKey, number, message };
-        break;
-      default:
-        // Generic fallback
-        gatewayPayload = { number, message, api_key: apiKey, sender };
-        break;
+    // Normalize number format (remove leading 0, ensure starts with 62)
+    number = number.replace(/^0/, '62');
+    if (!number.startsWith('62')) {
+      number = '62' + number;
     }
 
-    // Get WhatsApp Gateway URL from environment or use default
-    const gatewayUrl = process.env.WHATSAPP_GATEWAY_URL || 'https://seen.getsender.id/send-message';
-
-    // Choose payload format: default JSON, allow override or provider-specific
-    const format: 'json' | 'form' = (body.format || (provider === 'fonnte' ? 'form' : 'json')) as 'json' | 'form';
-
-    let response: Response;
-    if (format === 'form') {
-      const form = new URLSearchParams();
-      Object.entries(gatewayPayload).forEach(([k, v]) => form.append(k, v));
-
-      // Some providers (e.g., fonnte) prefer token in header; include if present
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      };
-      if (provider === 'fonnte' && apiKey) {
-        headers['Authorization'] = apiKey; // Fonnte supports Authorization: token
-      }
-
-      response = await fetch(gatewayUrl, {
-        method: 'POST',
-        headers,
-        body: form.toString(),
-      });
-    } else {
-      response = await fetch(gatewayUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(gatewayPayload),
+    // Validate required fields
+    if (!apiKey) {
+      return res.status(400).json({
+        success: false,
+        message: '❌ API Key tidak ditemukan'
       });
     }
+
+    if (!number || !message) {
+      return res.status(400).json({
+        success: false,
+        message: '❌ Nomor dan pesan wajib diisi'
+      });
+    }
+
+    // GetSender API uses GET method with query parameters
+    const gatewayBaseUrl = process.env.WHATSAPP_GATEWAY_URL || 'https://seen.getsender.id/send-message';
+    
+    // Build query parameters as per GetSender documentation
+    const params = new URLSearchParams({
+      api_key: apiKey,
+      number: number,
+      message: message
+    });
+
+    // Add sender if provided (optional footer parameter)
+    if (sender) {
+      params.append('sender', sender);
+    }
+
+    const gatewayUrl = `${gatewayBaseUrl}?${params.toString()}`;
+
+    console.log('[WA][URL]', requestId, {
+      url: gatewayBaseUrl,
+      number,
+      messageLength: message.length
+    });
+
+    // Call GetSender API using GET method (as per documentation)
+    const response = await fetch(gatewayUrl, {
+      method: 'GET',
+    });
 
     // Safe parse upstream response (may be empty or plain text)
     const rawText = await response.text();
@@ -111,24 +94,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     
     console.log('[WA][RES]', requestId, {
       status: response.status,
-      provider,
-      payloadSent: gatewayPayload,
-      raw: data
+      data
     });
 
+    // Check success based on GetSender response format
+    const isSuccess = response.ok && (
+      data?.status === true || 
+      data?.data?.status === 'SENT' ||
+      data?.message?.toLowerCase()?.includes('success')
+    );
+
     const normalized = {
-      success: response.ok,
+      success: isSuccess,
       status: response.status,
-      provider,
       requestId,
-      gatewayPayload,
       data,
-      message: response.ok
-        ? (data?.message || (data?.raw ? 'Sent (text response)' : 'Sent'))
-        : `Failed (${response.status})${data?.raw ? ": " + String(data.raw).slice(0, 200) : (data?.error ? ": " + data.error : ' (empty response)')}`
+      message: isSuccess
+        ? '✅ Pesan WhatsApp berhasil dikirim!'
+        : `❌ Gagal mengirim (${response.status})${data?.message ? ': ' + data.message : (data?.raw ? ': ' + String(data.raw).slice(0, 150) : ': Server tidak memberikan response')}`
     };
 
-    return res.status(response.status).json(normalized);
+    return res.status(response.ok ? 200 : response.status).json(normalized);
 
   } catch (error) {
     console.error('[WA][ERR]', error);
@@ -136,7 +122,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
-      message: 'Proxy error'
+      message: '❌ Proxy error: ' + (error instanceof Error ? error.message : 'Unknown error')
     });
   }
 }

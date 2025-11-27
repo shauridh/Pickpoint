@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Package, User, MapPin, Calendar, Clock, DollarSign, CheckCircle, XCircle, Send, Image, ExternalLink } from 'lucide-react';
+import { X, Package, User, Calendar, Clock, DollarSign, CheckCircle, XCircle, Send, Image, ExternalLink } from 'lucide-react';
 import { Package as PackageType, Customer, Location } from '../types';
 import { format } from 'date-fns';
 import { calculatePackagePrice } from '../services/pricing.service';

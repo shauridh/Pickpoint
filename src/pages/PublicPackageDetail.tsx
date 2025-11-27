@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { 
   Package as PackageIcon, 
@@ -26,8 +26,13 @@ const PublicPackageDetail: React.FC = () => {
   const [error, setError] = useState('');
   const [paying, setPaying] = useState(false);
   const loc = useLocation();
+  const hasLoadedRef = useRef(false);
 
-  const loadPackageData = useCallback(() => {
+  useEffect(() => {
+    // Only load once
+    if (hasLoadedRef.current) return;
+    hasLoadedRef.current = true;
+
     try {
       const packages = JSON.parse(localStorage.getItem('pickpoint_packages') || '[]');
       const customers = JSON.parse(localStorage.getItem('pickpoint_customers') || '[]');
@@ -69,10 +74,6 @@ const PublicPackageDetail: React.FC = () => {
       setLoading(false);
     }
   }, [trackingNumber, loc.search]);
-
-  useEffect(() => {
-    loadPackageData();
-  }, [loadPackageData]);
 
   // removed legacy dummy handler; real handler defined below
 

@@ -47,7 +47,6 @@ const Packages: React.FC = () => {
       
       const matchesSearch = 
         pkg.trackingNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        pkg.pickupCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
         customer?.name.toLowerCase().includes(searchTerm.toLowerCase());
       
       const matchesStatus = statusFilter === 'all' || pkg.status === statusFilter;
@@ -130,7 +129,6 @@ const Packages: React.FC = () => {
       customer.name,
       customer.phone,
       pkg.trackingNumber,
-      pkg.pickupCode,
       location.name
     );
 
@@ -255,7 +253,6 @@ const Packages: React.FC = () => {
                 />
               </th>
               <th>{t('packages.trackingNumber')}</th>
-              <th>{t('packages.pickupCode')}</th>
               <th>{t('packages.customer')}</th>
               <th>{t('packages.location')}</th>
               <th>{t('packages.size')}</th>
@@ -268,7 +265,7 @@ const Packages: React.FC = () => {
           <tbody className="divide-y divide-gray-200">
             {paginatedPackages.length === 0 ? (
               <tr>
-                <td colSpan={10} className="text-center py-8 text-gray-500">
+                <td colSpan={9} className="text-center py-8 text-gray-500">
                   <PackageIcon className="h-12 w-12 mx-auto mb-2 text-gray-400" />
                   {t('common.noData')}
                 </td>
@@ -291,11 +288,6 @@ const Packages: React.FC = () => {
                       )}
                     </td>
                     <td className="font-medium">{pkg.trackingNumber}</td>
-                    <td>
-                      <span className="font-mono text-primary-600 font-semibold">
-                        {pkg.pickupCode}
-                      </span>
-                    </td>
                     <td>{customer?.name || '-'}</td>
                     <td>{location?.name || '-'}</td>
                     <td>{t(`size.${pkg.size}`)}</td>

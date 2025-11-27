@@ -130,7 +130,6 @@ const PackageModal: React.FC<PackageModalProps> = ({ package: editPackage, onClo
             customer.name,
             customer.phone,
             formData.trackingNumber,
-            '', // No pickup code yet
             location.name
           );
         }

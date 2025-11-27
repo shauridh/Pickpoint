@@ -36,7 +36,7 @@ const PackageDetailModal: React.FC<PackageDetailModalProps> = ({
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-sm font-semibold mb-1">Detail Paket</h2>
-              <p className="text-base font-mono font-bold">{pkg.trackingNumber} / {pkg.pickupCode}</p>
+              <p className="text-base font-mono font-bold">{pkg.trackingNumber}</p>
             </div>
             <button
               onClick={onClose}
@@ -215,12 +215,12 @@ const PackageDetailModal: React.FC<PackageDetailModalProps> = ({
                 <div className="flex-1">
                   <p className="text-xs font-semibold text-gray-900 mb-0.5">Link Pembayaran</p>
                   <a
-                    href={generatePackageDetailUrl(pkg.trackingNumber, pkg.pickupCode)}
+                    href={generatePackageDetailUrl(pkg.trackingNumber)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-xs text-blue-600 hover:text-blue-700 hover:underline break-all"
                   >
-                    {generatePackageDetailUrl(pkg.trackingNumber, pkg.pickupCode)}
+                    {generatePackageDetailUrl(pkg.trackingNumber)}
                   </a>
                 </div>
               </div>

@@ -19,7 +19,6 @@ export type PackageSize = 'small' | 'medium' | 'large' | 'extra_large';
 export interface Package {
   id: string;
   trackingNumber: string;
-  pickupCode: string;
   customerId: string;
   locationId: string;
   courierName?: string;

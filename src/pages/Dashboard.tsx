@@ -179,7 +179,6 @@ const Dashboard: React.FC = () => {
       const customer = customers.find(c => c.id === pkg.customerId);
       const matchesSearch = 
         pkg.trackingNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        pkg.pickupCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
         customer?.name.toLowerCase().includes(searchTerm.toLowerCase());
       
       const matchesStatus = statusFilter === 'all' || pkg.status === statusFilter;
@@ -606,7 +605,6 @@ const Dashboard: React.FC = () => {
                   </th>
                   <th className="text-indigo-900 font-semibold">Tanggal Tiba</th>
                   <th className="text-indigo-900 font-semibold">{t('packages.trackingNumber')}</th>
-                  <th className="text-indigo-900 font-semibold">{t('packages.pickupCode')}</th>
                   <th className="text-indigo-900 font-semibold">{t('packages.customer')}</th>
                   <th className="text-indigo-900 font-semibold">{t('packages.location')}</th>
                   <th className="text-indigo-900 font-semibold">{t('packages.status')}</th>
@@ -617,7 +615,7 @@ const Dashboard: React.FC = () => {
             <tbody className="divide-y divide-indigo-100">
               {filteredPackages.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="text-center py-12 text-gray-500">
+                  <td colSpan={9} className="text-center py-12 text-gray-500">
                     <div className="flex flex-col items-center">
                       <div className="p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-full mb-4">
                         <Package className="h-12 w-12 text-indigo-400" />
@@ -658,11 +656,6 @@ const Dashboard: React.FC = () => {
                             {t(`size.${pkg.size}`)}
                           </p>
                         )}
-                      </td>
-                      <td>
-                        <span className="font-mono bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent font-bold">
-                          {pkg.pickupCode}
-                        </span>
                       </td>
                       <td className="text-gray-700">{customer?.name || '-'}</td>
                       <td className="text-gray-700">{location?.name || '-'}</td>

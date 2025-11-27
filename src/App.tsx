@@ -27,7 +27,7 @@ const App: React.FC = () => {
         <Routes>
           {/* Public Routes - No Auth Required */}
           <Route path="/" element={<LandingPage />} />
-          <Route path="/p/:trackingNumber/:pickupCode" element={<PublicPackageDetail />} />
+          <Route path="/p/:trackingNumber" element={<PublicPackageDetail />} />
           
           <Route path="/login" element={<Login />} />
           

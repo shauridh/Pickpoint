@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { 
   Package as PackageIcon, 
   MapPin, 
@@ -14,19 +14,22 @@ import {
 import { format } from 'date-fns';
 import { Package, Customer, Location } from '@/types';
 import { calculatePackagePrice } from '@/services/pricing.service';
+import { createXenditInvoice } from '@/services/payment.service';
 
 const PublicPackageDetail: React.FC = () => {
-  const { trackingNumber, pickupCode } = useParams<{ trackingNumber: string; pickupCode: string }>();
+  const { trackingNumber } = useParams<{ trackingNumber: string }>();
   const navigate = useNavigate();
   const [pkg, setPkg] = useState<Package | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [location, setLocation] = useState<Location | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [paying, setPaying] = useState(false);
+  const loc = useLocation();
 
   useEffect(() => {
     loadPackageData();
-  }, [trackingNumber, pickupCode]);
+  }, [trackingNumber]);
 
   const loadPackageData = () => {
     try {
@@ -35,17 +38,28 @@ const PublicPackageDetail: React.FC = () => {
       const locations = JSON.parse(localStorage.getItem('pickpoint_locations') || '[]');
 
       const foundPackage = packages.find(
-        (p: Package) => p.trackingNumber === trackingNumber && p.pickupCode === pickupCode
+        (p: Package) => p.trackingNumber === trackingNumber
       );
 
       if (!foundPackage) {
-        setError('Paket tidak ditemukan atau kode pengambilan salah');
+        setError('Paket tidak ditemukan');
         setLoading(false);
         return;
       }
 
       const foundCustomer = customers.find((c: Customer) => c.id === foundPackage.customerId);
       const foundLocation = locations.find((l: Location) => l.id === foundPackage.locationId);
+
+      // If dummy payment flow: ?paid=1 then mark as paid locally
+      const params = new URLSearchParams(loc.search);
+      const paidParam = params.get('paid');
+      if (paidParam === '1') {
+        foundPackage.paymentStatus = 'paid';
+        foundPackage.paidAt = new Date().toISOString();
+        // persist back to local storage
+        const updatedPackages = packages.map((p: Package) => p.id === foundPackage.id ? foundPackage : p);
+        localStorage.setItem('pickpoint_packages', JSON.stringify(updatedPackages));
+      }
 
       setPkg(foundPackage);
       setCustomer(foundCustomer);
@@ -57,14 +71,7 @@ const PublicPackageDetail: React.FC = () => {
     }
   };
 
-  const handlePayNow = () => {
-    // Integrate with payment gateway here
-    // For now, just show alert
-    alert('Fitur payment gateway akan segera tersedia!\n\nAnda akan diarahkan ke halaman pembayaran.');
-    
-    // Example: Redirect to payment gateway
-    // window.location.href = `https://payment-gateway.com/pay?amount=${pricing.finalPrice}&ref=${pkg.trackingNumber}`;
-  };
+  // removed legacy dummy handler; real handler defined below
 
   if (loading) {
     return (
@@ -98,9 +105,52 @@ const PublicPackageDetail: React.FC = () => {
     );
   }
 
-  const pricing = calculatePackagePrice(pkg, location, customer);
-  const isPaid = pkg.paymentStatus === 'paid';
-  const canPickup = pkg.status === 'arrived' && isPaid;
+  const pricing = pkg && location && customer ? calculatePackagePrice(pkg, location, customer) : { finalPrice: 0, days: 0 } as any;
+  const isPaid = pkg?.paymentStatus === 'paid';
+  const canPickup = pkg?.status === 'arrived' && isPaid;
+
+  const handlePayNow = async () => {
+    if (!pkg || !customer || !location) return;
+    try {
+      setPaying(true);
+      const invoice = await createXenditInvoice({ pkg, customer, location });
+      if (invoice?.invoice_url) {
+        window.location.href = invoice.invoice_url;
+      } else {
+        alert('Gagal membuat invoice.');
+      }
+    } catch (e: any) {
+      alert('Gagal membuat invoice: ' + (e?.message || 'Unknown error'));
+    } finally {
+      setPaying(false);
+    }
+  };
+
+  // Poll payment status when not paid
+  useEffect(() => {
+    let timer: any;
+    const poll = async () => {
+      if (!pkg || isPaid) return;
+      try {
+        const externalId = `PKG-${pkg.id}`;
+        const resp = await fetch(`/api/payments/xendit-status?external_id=${encodeURIComponent(externalId)}`);
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.status === 'PAID') {
+            // mark paid locally
+            const packages = JSON.parse(localStorage.getItem('pickpoint_packages') || '[]');
+            const updated = packages.map((p: Package) => p.id === pkg.id ? { ...p, paymentStatus: 'paid', paidAt: new Date().toISOString() } : p);
+            localStorage.setItem('pickpoint_packages', JSON.stringify(updated));
+            // refresh view
+            setPkg({ ...pkg, paymentStatus: 'paid', paidAt: new Date().toISOString() });
+          }
+        }
+      } catch {}
+      timer = setTimeout(poll, 5000);
+    };
+    poll();
+    return () => { if (timer) clearTimeout(timer); };
+  }, [pkg, isPaid]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
@@ -113,8 +163,8 @@ const PublicPackageDetail: React.FC = () => {
                 <PackageIcon className="h-8 w-8" />
               </div>
               <div>
-                <h1 className="text-xl font-bold">Detail Paket</h1>
-                <p className="text-lg font-mono font-bold">{trackingNumber} / {pickupCode}</p>
+                <h1 className="text-xl font-bold mb-1">Detail Paket</h1>
+                <p className="text-lg font-mono font-bold">{trackingNumber}</p>
               </div>
             </div>
           </div>
@@ -130,7 +180,7 @@ const PublicPackageDetail: React.FC = () => {
               <CheckCircle className="h-6 w-6 flex-shrink-0" />
               <div>
                 <p className="font-bold">Paket Siap Diambil!</p>
-                <p className="text-sm text-green-100">Tunjukkan kode pengambilan kepada petugas untuk mengambil paket Anda.</p>
+                <p className="text-sm text-green-100">Tunjukkan nomor resi kepada petugas untuk mengambil paket Anda.</p>
               </div>
             </div>
           </div>
@@ -155,7 +205,6 @@ const PublicPackageDetail: React.FC = () => {
             <div className="bg-white rounded-xl shadow-lg p-6">
               <h2 className="text-lg font-bold text-gray-900 mb-4">Informasi Paket</h2>
               <div className="space-y-4">
-
                 <div className="flex items-start gap-3 pb-4 border-b">
                   <Truck className="h-5 w-5 text-purple-600 mt-1" />
                   <div className="flex-1">
@@ -250,14 +299,15 @@ const PublicPackageDetail: React.FC = () => {
                   <>
                     <button
                       onClick={handlePayNow}
-                      className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all shadow-md hover:shadow-lg font-semibold"
+                      disabled={paying}
+                      className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all shadow-md hover:shadow-lg font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                       <CreditCard className="h-5 w-5" />
-                      Bayar Sekarang
+                      {paying ? 'Membuat Invoice...' : 'Bayar Sekarang'}
                     </button>
 
                     <p className="text-xs text-gray-500 text-center">
-                      Pembayaran aman dengan berbagai metode
+                      Pembayaran aman dengan berbagai metode (Xendit)
                     </p>
 
                     <div className="grid grid-cols-3 gap-2 pt-4 border-t">

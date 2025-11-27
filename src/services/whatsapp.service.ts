@@ -61,20 +61,18 @@ export const sendWhatsAppMessage = async (
 };
 
 export const generatePackageDetailUrl = (
-  trackingNumber: string,
-  pickupCode: string
+  trackingNumber: string
 ): string => {
   // Use public domain for package tracking links
   const isProduction = window.location.hostname !== 'localhost' && !window.location.hostname.includes('127.0.0.1');
   const baseUrl = isProduction ? 'https://pickpoint.my.id' : window.location.origin;
-  return `${baseUrl}/p/${trackingNumber}/${pickupCode}`;
+  return `${baseUrl}/p/${trackingNumber}`;
 };
 
 export const sendPackageArrivalNotification = async (
   customerName: string,
   customerPhone: string,
   trackingNumber: string,
-  pickupCode: string,
   locationName: string
 ): Promise<boolean> => {
   const settings: AppSettings = getSettings();
@@ -84,7 +82,7 @@ export const sendPackageArrivalNotification = async (
   }
 
   // Generate public package detail link
-  const packageLink = generatePackageDetailUrl(trackingNumber, pickupCode);
+  const packageLink = generatePackageDetailUrl(trackingNumber);
 
   // Use template from settings if available
   let message: string;
@@ -92,14 +90,13 @@ export const sendPackageArrivalNotification = async (
     message = settings.notificationTemplates.packageArrival
       .replace('{name}', customerName)
       .replace('{tracking}', trackingNumber)
-      .replace('{pickup_code}', pickupCode)
       .replace('{location}', locationName)
       .replace('{link}', packageLink);
   } else {
     // Fallback to default message
     message = settings.language === 'id'
-      ? `Halo ${customerName},\n\nPaket Anda dengan nomor resi ${trackingNumber} telah tiba di ${locationName}.\n\nKode Pengambilan: *${pickupCode}*\n\nLihat detail: ${packageLink}\n\nTerima kasih,\n${settings.companyName}`
-      : `Hello ${customerName},\n\nYour package with tracking number ${trackingNumber} has arrived at ${locationName}.\n\nPickup Code: *${pickupCode}*\n\nView details: ${packageLink}\n\nThank you,\n${settings.companyName}`;
+      ? `Halo ${customerName},\n\nPaket Anda dengan nomor resi ${trackingNumber} telah tiba di ${locationName}.\n\nLihat detail: ${packageLink}\n\nTerima kasih,\n${settings.companyName}`
+      : `Hello ${customerName},\n\nYour package with tracking number ${trackingNumber} has arrived at ${locationName}.\n\nView details: ${packageLink}\n\nThank you,\n${settings.companyName}`;
   }
 
   return sendWhatsAppMessage(customerPhone, message);
@@ -138,7 +135,6 @@ export const sendPickupReminderNotification = async (
   customerName: string,
   customerPhone: string,
   trackingNumber: string,
-  pickupCode: string,
   daysWaiting: number
 ): Promise<boolean> => {
   const settings: AppSettings = getSettings();
@@ -148,7 +144,7 @@ export const sendPickupReminderNotification = async (
   }
 
   // Generate public package detail link
-  const packageLink = generatePackageDetailUrl(trackingNumber, pickupCode);
+  const packageLink = generatePackageDetailUrl(trackingNumber);
 
   // Use template from settings if available
   let message: string;
@@ -156,14 +152,13 @@ export const sendPickupReminderNotification = async (
     message = settings.notificationTemplates.membershipReminder
       .replace('{name}', customerName)
       .replace('{tracking}', trackingNumber)
-      .replace('{pickup_code}', pickupCode)
       .replace('{days}', daysWaiting.toString())
       .replace('{link}', packageLink);
   } else {
     // Fallback to default message
     message = settings.language === 'id'
-      ? `Halo ${customerName},\n\nIni adalah pengingat bahwa paket Anda (${trackingNumber}) telah menunggu selama ${daysWaiting} hari.\n\nKode Pengambilan: *${pickupCode}*\n\nLihat detail: ${packageLink}\n\nMohon segera ambil paket Anda.\n\nTerima kasih,\n${settings.companyName}`
-      : `Hello ${customerName},\n\nThis is a reminder that your package (${trackingNumber}) has been waiting for ${daysWaiting} days.\n\nPickup Code: *${pickupCode}*\n\nView details: ${packageLink}\n\nPlease collect your package soon.\n\nThank you,\n${settings.companyName}`;
+      ? `Halo ${customerName},\n\nIni adalah pengingat bahwa paket Anda (${trackingNumber}) telah menunggu selama ${daysWaiting} hari.\n\nLihat detail: ${packageLink}\n\nMohon segera ambil paket Anda.\n\nTerima kasih,\n${settings.companyName}`
+      : `Hello ${customerName},\n\nThis is a reminder that your package (${trackingNumber}) has been waiting for ${daysWaiting} days.\n\nView details: ${packageLink}\n\nPlease collect your package soon.\n\nThank you,\n${settings.companyName}`;
   }
 
   return sendWhatsAppMessage(customerPhone, message);
